@@ -9,7 +9,7 @@ from pandapower.pypower.makePTDF import makePTDF
 from UnifiedPlanningProblem import UnifiedPlanningProblem
 
 
-# NOTE: for now there is a lot of 'magic strings' in the code due to the massive utilisation of Pandas DataFrames by the backend (PandaPower) of Grid2op,s
+# NOTE: for now there is a lot of 'magic strings' in the code due to the massive utilisation of Pandas DataFrames by the backend (PandaPower) of grid2op
 # so maybe we should consider to create a config.py file to store all the constants?
 
 
@@ -22,6 +22,8 @@ class AIPlan4GridAgent(BaseAgent):
         return ptdf
 
     def _get_mapping(self):
+        # I could use the following grid2op function https://grid2op.readthedocs.io/en/latest/observation.html#grid2op.Observation.BaseObservation.flow_bus_matrix
+        # but I don't want to be dependant of a function that gives me too much information
         mapping = {"buses": {}, "transmission_lines": {}}
         buses = self.grid.bus.loc[self.grid.bus["in_service"]]
 
@@ -83,6 +85,15 @@ class AIPlan4GridAgent(BaseAgent):
 
         return grid_params
 
+    def _get_initial_states(self):
+        init_states = {}
+        init_states["gens"] = self.env.current_obs.gen_p
+        init_states["loads"] = self.env.current_obs.load_p
+        init_states["storages"] = self.env.current_obs.storage_charge
+        flow_mat, _ = self.env.current_obs.flow_bus_matrix()
+        init_states["flows"] = flow_mat
+        return init_states
+
     def __init__(
         self,
         env: Environment,
@@ -108,6 +119,7 @@ class AIPlan4GridAgent(BaseAgent):
         self.ptdf = self._get_ptdf()
         self.mapping = self._get_mapping()
         self.grid_params = self._get_grid_params()
+        self.init_states = self._get_initial_states()
 
         if logger is None:
             self.logger: logging.Logger = logging.getLogger(__name__)
@@ -126,12 +138,13 @@ class AIPlan4GridAgent(BaseAgent):
             self.ptdf,
             self.mapping,
             self.grid_params,
+            self.init_states,
         )
 
     def act(
         self, obs: BaseObservation, reward: float = 1.0, done: bool = False
     ) -> BaseAction:
-        pass
+        upb = self._to_unified_planning().create_problem()
 
     def step():
         pass

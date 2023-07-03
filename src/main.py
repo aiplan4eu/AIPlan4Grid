@@ -13,6 +13,7 @@ def main():
     )  # I think that the timestep duration is 5 minutes, so 144 timesteps represents 12 hours
     env.set_id(0)  # reset the env to the same id
     obs = env.reset()
+    agent.act(obs)
 
 
 if __name__ == "__main__":
