@@ -10,6 +10,7 @@ from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
 from UnifiedPlanningProblem import UnifiedPlanningProblem
+from timeit import default_timer as timer
 
 
 class AIPlan4GridAgent(BaseAgent):
@@ -67,6 +68,7 @@ class AIPlan4GridAgent(BaseAgent):
         self,
         env: Environment,
         horizon: int,
+        data_generator,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
@@ -82,9 +84,8 @@ class AIPlan4GridAgent(BaseAgent):
         super().__init__(env.action_space)
         self.env = env
         self.horizon = horizon
+        self.data_generator = data_generator
         self.grid = self.env.backend._grid
-        self.nb_gens = self.grid.gen.shape[0]
-        self.nb_storages = self.grid.storage.shape[0]
         self.ptdf = self._get_ptdf()
         self.grid_params = self._get_grid_params()
         self.init_states = self._get_initial_states()
@@ -101,8 +102,6 @@ class AIPlan4GridAgent(BaseAgent):
     def _to_unified_planning(self):
         return UnifiedPlanningProblem(
             self.horizon,
-            self.nb_gens,
-            self.nb_storages,
             self.ptdf,
             self.grid_params,
             self.init_states,
@@ -111,8 +110,13 @@ class AIPlan4GridAgent(BaseAgent):
     def act(
         self, obs: BaseObservation, reward: float = 1.0, done: bool = False
     ) -> BaseAction:
+        print("Creating unified planning problem")
         upb = self._to_unified_planning()
+        print("Solving unified planning problem")
+        start = timer()
         upb.solve()
+        end = timer()
+        print(f"Problem solved in {end - start} seconds")
 
     def step():
         pass
