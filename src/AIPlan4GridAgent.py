@@ -1,68 +1,27 @@
+import logging
+from typing import Optional
+
+import pandapower as pp
+from grid2op.Action import BaseAction
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
-from grid2op.Action import BaseAction
 from grid2op.Observation import BaseObservation
-from typing import Optional
-import logging
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
+
 from UnifiedPlanningProblem import UnifiedPlanningProblem
-
-
-# NOTE: for now there is a lot of 'magic strings' in the code due to the massive utilisation of Pandas DataFrames by the backend (PandaPower) of grid2op
-# so maybe we should consider to create a config.py file to store all the constants?
 
 
 class AIPlan4GridAgent(BaseAgent):
     def _get_ptdf(self):
         net = self.grid
-        # pp.rundcpp(net)
+        pp.rundcpp(net)
         _, ppci = _pd2ppc(net)
         ptdf = makePTDF(ppci["baseMVA"], ppci["bus"], ppci["branch"])
         return ptdf
 
-    def _get_mapping(self):
-        # I could use the following grid2op function https://grid2op.readthedocs.io/en/latest/observation.html#grid2op.Observation.BaseObservation.flow_bus_matrix
-        # but I don't want to be dependant of a function that gives me too much information
-        mapping = {"buses": {}, "transmission_lines": {}}
-        buses = self.grid.bus.loc[self.grid.bus["in_service"]]
-
-        for bus_idx in buses.index:
-            mapping["buses"][bus_idx] = {
-                "gen_idx": [],
-                "storage_idx": [],
-                "load_idx": [],
-            }
-
-        gens = self.grid.gen["bus"]
-        storages = self.grid.storage["bus"]
-        loads = self.grid.load["bus"]
-
-        for i, gen_bus in enumerate(gens):
-            mapping["buses"].setdefault(gen_bus, {"gen_idx": []})["gen_idx"].append(i)
-
-        for i, storage_bus in enumerate(storages):
-            mapping["buses"].setdefault(storage_bus, {"storage_idx": []})[
-                "storage_idx"
-            ].append(i)
-
-        for i, load_bus in enumerate(loads):
-            mapping["buses"].setdefault(load_bus, {"load_idx": []})["load_idx"].append(
-                i
-            )
-
-        transmission_lines = self.grid.line[["from_bus", "to_bus"]]
-
-        for tl in transmission_lines.index:
-            mapping["transmission_lines"][tl] = {
-                "from": transmission_lines.at[tl, "from_bus"],
-                "to": transmission_lines.at[tl, "to_bus"],
-            }
-
-        return mapping
-
     def _get_grid_params(self):
-        grid_params = {"gens": {}, "storages": {}}
+        grid_params = {"gens": {}, "storages": {}, "lines": {}}
 
         # Generators parameters
         grid_params["gens"]["pmin"] = self.env.gen_pmin
@@ -71,6 +30,8 @@ class AIPlan4GridAgent(BaseAgent):
         grid_params["gens"]["max_ramp_up"] = self.env.gen_max_ramp_up
         grid_params["gens"]["max_ramp_down"] = self.env.gen_max_ramp_down
         grid_params["gens"]["gen_cost_per_MW"] = self.env.gen_cost_per_MW
+        grid_params["gens"]["slack"] = self.grid.gen["slack"].to_numpy()
+        grid_params["gens"]["bus"] = self.grid.gen["bus"].to_numpy()
 
         # Storages parameters
         grid_params["storages"]["Emax"] = self.env.storage_Emax
@@ -82,6 +43,14 @@ class AIPlan4GridAgent(BaseAgent):
         grid_params["storages"][
             "discharging_efficiency"
         ] = self.env.storage_discharging_efficiency
+
+        # Lines parameters
+        transmission_lines = self.grid.line[["from_bus", "to_bus"]]
+        for tl_idx in transmission_lines.index:
+            grid_params["lines"][tl_idx] = {
+                "from": transmission_lines.at[tl_idx, "from_bus"],
+                "to": transmission_lines.at[tl_idx, "to_bus"],
+            }
 
         return grid_params
 
@@ -117,7 +86,6 @@ class AIPlan4GridAgent(BaseAgent):
         self.nb_gens = self.grid.gen.shape[0]
         self.nb_storages = self.grid.storage.shape[0]
         self.ptdf = self._get_ptdf()
-        self.mapping = self._get_mapping()
         self.grid_params = self._get_grid_params()
         self.init_states = self._get_initial_states()
 
@@ -136,7 +104,6 @@ class AIPlan4GridAgent(BaseAgent):
             self.nb_gens,
             self.nb_storages,
             self.ptdf,
-            self.mapping,
             self.grid_params,
             self.init_states,
         )
@@ -144,7 +111,8 @@ class AIPlan4GridAgent(BaseAgent):
     def act(
         self, obs: BaseObservation, reward: float = 1.0, done: bool = False
     ) -> BaseAction:
-        upb = self._to_unified_planning().create_problem()
+        upb = self._to_unified_planning()
+        upb.solve()
 
     def step():
         pass
