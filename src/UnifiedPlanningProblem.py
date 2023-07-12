@@ -2,7 +2,6 @@ from timeit import default_timer as timer
 
 import numpy as np
 import unified_planning as up
-from unified_planning.engines import PlanGenerationResultStatus
 from unified_planning.shortcuts import *
 
 
@@ -19,7 +18,7 @@ class UnifiedPlanningProblem:
         horizon: int,
         ptdf: list[list],
         grid_params: dict,
-        init_states: dict,
+        reference_states: dict,
     ):
         self.horizon = horizon
         self.ptdf = ptdf
@@ -27,25 +26,33 @@ class UnifiedPlanningProblem:
         self.grid_params = grid_params
         self.nb_gens = len(grid_params["gens"]["pmax"])
         self.nb_storages = len(grid_params["storages"]["Emax"])
-        self.init_states = init_states
+        self.reference_states = reference_states
         self.nb_transmission_lines = len(grid_params["lines"])
+        self.slack_gens = np.where(grid_params["gens"]["slack"] == True)[0]
 
         start = timer()
         self._create_fluents()
         end = timer()
         print(f"Fluents creation: {end - start} seconds")
-        print(
-            f"Number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}"
-        )
+
         start = timer()
         self._create_actions()
         end = timer()
         print(f"Actions creation: {end - start} seconds")
-        print(f"Number of actions: {len(self.prod_target)}")
+
         start = timer()
         self._create_problem()
         end = timer()
         print(f"Problem creation: {end - start} seconds")
+
+    def print_summary(self):
+        print(
+            f"Number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}"
+        )
+        print(f"Number of actions: {len(self.prod_target)}")
+
+    def print_problem(self):
+        print(self.problem)
 
     def _create_fluents(self):
         # Creating problem 'variables' so called fluents in PDDL
@@ -59,7 +66,7 @@ class UnifiedPlanningProblem:
         # self.soc = np.array(
         #     [
         #         [
-        #             Fluent(f"soc_{storage_id}_{t}", RealType())
+        #             Fluent(f"soc_{storage_id}_{t}", RealType(0, 1))
         #             for t in range(self.horizon)
         #         ]
         #         for storage_id in range(self.nb_storages)
@@ -92,7 +99,52 @@ class UnifiedPlanningProblem:
                 pmax = self.grid_params["gens"]["pmax"][gen_id]
                 pmin = self.grid_params["gens"]["pmin"][gen_id]
                 delta = int(pmax - pmin)
-                for t in range(self.horizon - 1):
+
+                for i in range(delta):
+                    self.prod_target.append(
+                        InstantaneousAction(f"prod_target_{gen_id}_{0}_{i}")
+                    )
+                    action = self.prod_target[-1]
+                    self.actions_costs[action] = (
+                        i * self.grid_params["gens"]["gen_cost_per_MW"][gen_id]
+                    )
+                    action.add_precondition(
+                        GE(
+                            float(self.reference_states["gens"][0][gen_id]),
+                            i - self.grid_params["gens"]["max_ramp_up"][gen_id],
+                        )
+                    )
+                    action.add_precondition(
+                        LE(
+                            float(self.reference_states["gens"][0][gen_id]),
+                            i + self.grid_params["gens"]["max_ramp_down"][gen_id],
+                        )
+                    )
+                    action.add_effect(self.pgen[gen_id][0], i)
+                for k in range(self.nb_transmission_lines):
+                    action.add_increase_effect(
+                        self.flows[k][0],
+                        float(self.ptdf[k][self.grid_params["gens"]["bus"][gen_id]])
+                        * (
+                            self.pgen[gen_id][0]
+                            - float(self.reference_states["gens"][0][gen_id])
+                        ),
+                    )
+                    action.add_effect(
+                        self.congestions[k][0],
+                        True,
+                        condition=GE(self.flows[k][0], 5000),
+                    )
+                if len(self.slack_gens) > 1:
+                    raise ("More than one slack generator!")
+                else:
+                    action.add_decrease_effect(
+                        self.pgen[self.slack_gens[0]][0],
+                        self.pgen[gen_id][0]
+                        - float(self.reference_states["gens"][0][gen_id]),
+                    )
+
+                for t in range(1, self.horizon):
                     for i in range(delta):
                         self.prod_target.append(
                             InstantaneousAction(f"prod_target_{gen_id}_{t}_{i}")
@@ -103,39 +155,41 @@ class UnifiedPlanningProblem:
                         )
                         action.add_precondition(
                             GE(
-                                self.pgen[gen_id][t],
+                                self.pgen[gen_id][t - 1],
                                 i - self.grid_params["gens"]["max_ramp_up"][gen_id],
                             )
                         )
                         action.add_precondition(
                             LE(
-                                self.pgen[gen_id][t],
+                                self.pgen[gen_id][t - 1],
                                 i + self.grid_params["gens"]["max_ramp_down"][gen_id],
                             )
                         )
-                        action.add_effect(self.pgen[gen_id][t + 1], i)
-                        for k in range(self.nb_transmission_lines):
-                            action.add_increase_effect(
-                                self.flows[k][t + 1],
-                                float(
-                                    self.ptdf[k][
-                                        self.grid_params["gens"]["bus"][gen_id]
-                                    ]
-                                )
-                                * (
-                                    self.pgen[gen_id][t + 1]
-                                    - float(
-                                        self.init_states["gens"][gen_id]
-                                    )  # TODO: add dimension t in init_states
-                                ),
-                            )
-                            if (
-                                self.flows[k][t + 1] >= 500000000000
-                            ):  # TODO: add the max flow on each line in the grid_params
-                                action.add_effect(
-                                    self.congestions[k][t + 1], True
-                                )  # TODO: do it with conditionnal effect
-                                # TODO: add effect on slack gen
+                        action.add_effect(self.pgen[gen_id][t], i)
+                    for k in range(self.nb_transmission_lines):
+                        action.add_increase_effect(
+                            self.flows[k][t],
+                            float(self.ptdf[k][self.grid_params["gens"]["bus"][gen_id]])
+                            * (
+                                self.pgen[gen_id][t]
+                                - float(self.reference_states["gens"][t][gen_id])
+                            ),
+                        )
+                        action.add_effect(
+                            self.congestions[k][t],
+                            True,
+                            condition=GE(
+                                self.flows[k][t], 5000
+                            ),  # TODO: add max flow on each line
+                        )
+                    if len(self.slack_gens) > 1:
+                        raise ("More than one slack generator!")
+                    else:
+                        action.add_decrease_effect(
+                            self.pgen[self.slack_gens[0]][t],
+                            self.pgen[gen_id][t]
+                            - float(self.reference_states["gens"][t][gen_id]),
+                        )
 
         # self.soc_target = []
         # for storage_id in range(self.nb_storages):
@@ -190,9 +244,11 @@ class UnifiedPlanningProblem:
 
         # add initial states
         for gen_id in range(self.nb_gens):
-            problem.set_initial_value(
-                self.pgen[gen_id][0], float(self.init_states["gens"][gen_id])
-            )
+            for t in range(self.horizon):
+                problem.set_initial_value(
+                    self.pgen[gen_id][t],
+                    float(self.reference_states["gens"][0][0]),
+                )
 
         # for storage_id in range(self.nb_storages):
         #     problem.set_initial_value(
@@ -200,12 +256,13 @@ class UnifiedPlanningProblem:
         #     )
 
         for k in range(self.nb_transmission_lines):
-            problem.set_initial_value(self.congestions[k][0], False)
-            i = self.grid_params["lines"][k]["from"]
-            j = self.grid_params["lines"][k]["to"]
-            problem.set_initial_value(
-                self.flows[k][0], float(self.init_states["flows"][i][j])
-            )
+            for t in range(self.horizon):
+                problem.set_initial_value(self.congestions[k][t], False)
+                i = self.grid_params["lines"][k]["from"]
+                j = self.grid_params["lines"][k]["to"]
+                problem.set_initial_value(
+                    self.flows[k][t], float(self.reference_states["flows"][t][i][j])
+                )
 
         print("Initial states added")
 
@@ -213,7 +270,13 @@ class UnifiedPlanningProblem:
             up.model.metrics.MinimizeActionCosts(self.actions_costs)
         )
 
-        goal = And([self.congestions[k][0] for k in range(self.nb_transmission_lines)])
+        goal = And(
+            [
+                self.congestions[k][t]
+                for k in range(self.nb_transmission_lines)
+                for t in range(self.horizon)
+            ]
+        )
         problem.add_goal(goal)
 
         print("Objective added")
@@ -221,28 +284,15 @@ class UnifiedPlanningProblem:
         self.problem = problem
 
     def solve(self):
-        with Compiler(
-            problem_kind=self.problem.kind,
-            compilation_kind=CompilationKind.CONDITIONAL_EFFECTS_REMOVING,
-        ) as compiler:
-            compiler_result = compiler.compile(
-                self.problem, CompilationKind.CONDITIONAL_EFFECTS_REMOVING
-            )
-            compiled_problem = compiler_result.problem
-            with OneshotPlanner(problem_kind=compiled_problem.kind) as planner:
-                compiled_plan = planner.solve(compiled_problem).plan
-                original_plan = compiled_plan.replace_action_instances(
-                    compiler_result.map_back_action_instance
-                )
-                with PlanValidator(
-                    problem_kind=self.problem.kind, plan_kind=compiled_plan.kind
-                ) as validator:
-                    compiled_validation = validator.validate(
-                        compiled_problem, compiled_plan
-                    )
-                    original_validation = validator.validate(
-                        self.problem, original_plan
-                    )
-                    Valid = up.engines.ValidationResultStatus.VALID
-                    assert compiled_validation.status == Valid
-                    assert original_validation.status == Valid
+        with OneshotPlanner(name="enhsp") as planner:
+            print("Solving...")
+            plan = planner.solve(self.problem).plan
+            print("Plan found")
+            print(plan)
+            # with PlanValidator(
+            #     problem_kind=self.problem.kind, plan_kind=plan.kind
+            # ) as validator:
+            #     validation = validator.validate(self.problem, plan)
+            #     Valid = up.engines.ValidationResultStatus.VALID
+            #     assert validation.status == Valid
+            #     print("Plan is valid")

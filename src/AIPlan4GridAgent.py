@@ -1,6 +1,8 @@
 import logging
+from timeit import default_timer as timer
 from typing import Optional
 
+import numpy as np
 import pandapower as pp
 from grid2op.Action import BaseAction
 from grid2op.Agent import BaseAgent
@@ -10,7 +12,6 @@ from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
 from UnifiedPlanningProblem import UnifiedPlanningProblem
-from timeit import default_timer as timer
 
 
 class AIPlan4GridAgent(BaseAgent):
@@ -55,20 +56,26 @@ class AIPlan4GridAgent(BaseAgent):
 
         return grid_params
 
-    def _get_initial_states(self):
-        init_states = {}
-        init_states["gens"] = self.env.current_obs.gen_p
-        init_states["loads"] = self.env.current_obs.load_p
-        init_states["storages"] = self.env.current_obs.storage_charge
-        flow_mat, _ = self.env.current_obs.flow_bus_matrix()
-        init_states["flows"] = flow_mat
-        return init_states
+    def _get_reference_states(self):
+        # TODO: to refactor with forcasted data
+        reference_states = {
+            "gens": np.array([self.env.current_obs.gen_p for _ in range(self.horizon)]),
+            "loads": np.array(
+                [self.env.current_obs.load_p for _ in range(self.horizon)]
+            ),
+            "storages": np.array(
+                [self.env.current_obs.storage_charge for _ in range(self.horizon)]
+            ),
+            "flows": np.array(
+                [self.env.current_obs.flow_bus_matrix()[0] for _ in range(self.horizon)]
+            ),
+        }
+        return reference_states
 
     def __init__(
         self,
         env: Environment,
         horizon: int,
-        data_generator,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
@@ -84,11 +91,10 @@ class AIPlan4GridAgent(BaseAgent):
         super().__init__(env.action_space)
         self.env = env
         self.horizon = horizon
-        self.data_generator = data_generator
         self.grid = self.env.backend._grid
         self.ptdf = self._get_ptdf()
         self.grid_params = self._get_grid_params()
-        self.init_states = self._get_initial_states()
+        self.reference_states = self._get_reference_states()
 
         if logger is None:
             self.logger: logging.Logger = logging.getLogger(__name__)
@@ -99,19 +105,18 @@ class AIPlan4GridAgent(BaseAgent):
         else:
             self.logger: logging.Logger = logger.getChild("AIPlan4GridAgent")
 
-    def _to_unified_planning(self):
-        return UnifiedPlanningProblem(
-            self.horizon,
-            self.ptdf,
-            self.grid_params,
-            self.init_states,
-        )
-
     def act(
         self, obs: BaseObservation, reward: float = 1.0, done: bool = False
     ) -> BaseAction:
         print("Creating unified planning problem")
-        upb = self._to_unified_planning()
+        upb = UnifiedPlanningProblem(
+            self.horizon,
+            self.ptdf,
+            self.grid_params,
+            self.reference_states,
+        )
+        upb.print_summary()
+        upb.print_problem()
         print("Solving unified planning problem")
         start = timer()
         upb.solve()
