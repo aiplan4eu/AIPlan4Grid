@@ -1,4 +1,5 @@
 import os
+from os.path import join as pjoin
 from timeit import default_timer as timer
 
 import numpy as np
@@ -123,7 +124,7 @@ class UnifiedPlanningProblem:
                         action.add_effect(
                             self.congestions[k][0],
                             True,
-                            condition=GE(self.flows[k][0], 5000),
+                            condition=GE(self.flows[k][0], 50),
                         )
                     if len(self.slack_gens) > 1:
                         raise ("More than one slack generator!")
@@ -186,7 +187,7 @@ class UnifiedPlanningProblem:
                                 self.congestions[k][t],
                                 True,
                                 condition=GE(
-                                    self.flows[k][t], 5000
+                                    self.flows[k][t], 50
                                 ),  # TODO: add max flow on each line
                             )
                         if len(self.slack_gens) > 1:
@@ -247,33 +248,35 @@ class UnifiedPlanningProblem:
                     self.flows[k][t], float(self.reference_states[cfg.FLOWS][t][i][j])
                 )
 
+        # add quality metrics for optimization + goal
         problem.add_quality_metric(
             up.model.metrics.MinimizeActionCosts(self.actions_costs)
         )
 
-        goal = And(
-            [
-                self.congestions[k][t]
-                for k in range(self.nb_transmission_lines)
-                for t in range(self.horizon)
-            ]
-        )
-        problem.add_goal(goal)
+        goals = [
+            Not(self.congestions[k][t])
+            for k in range(self.nb_transmission_lines)
+            for t in range(self.horizon)
+        ]
+
+        problem.add_goal(And(goals))
 
         self.problem = problem
 
     def save_problem(self):
-        os.makedirs("tmp", exist_ok=True)
-        with open("tmp/problem.up", "w") as f:
+        os.makedirs(cfg.TMP_DIR, exist_ok=True)
+        with open(pjoin(cfg.TMP_DIR, cfg.UP_PROBLEM), "w") as f:
             f.write(
                 f"number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
             f.write(f"number of actions: {len(self.prod_target)}\n")
             f.write(self.problem.__str__())
+        f.close()
 
     def solve(self):
         with OneshotPlanner(name=self.solver) as planner:
             plan = planner.solve(self.problem).plan
+            print(plan)
             # with PlanValidator(
             #     problem_kind=self.problem.kind, plan_kind=plan.kind
             # ) as validator:

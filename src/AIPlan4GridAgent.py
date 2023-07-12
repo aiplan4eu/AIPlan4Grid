@@ -1,3 +1,4 @@
+from os.path import join as pjoin
 from timeit import default_timer as timer
 
 import numpy as np
@@ -107,7 +108,7 @@ class AIPlan4GridAgent(BaseAgent):
             self.reference_states,
             self.solver,
         )
-        vprint("Saving UP problem in tmp/problem.up")
+        vprint(f"Saving UP problem in {pjoin(cfg.TMP_DIR, cfg.UP_PROBLEM)}")
         upb.save_problem()
         vprint("Solving UP problem...")
         start = timer()

@@ -1,4 +1,5 @@
 from pathlib import Path
+from os.path import join as pjoin
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -36,3 +37,6 @@ TO_BUS = "to_bus"
 
 LOADS = "loads"
 ###################################################
+
+TMP_DIR = pjoin(BASE_DIR, "tmp")
+UP_PROBLEM = "problem.up"
