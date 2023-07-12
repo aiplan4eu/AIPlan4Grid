@@ -1,16 +1,14 @@
-import logging
 from timeit import default_timer as timer
-from typing import Optional
 
 import numpy as np
 import pandapower as pp
-from grid2op.Action import BaseAction
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
-from grid2op.Observation import BaseObservation
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
+import src.config as cfg
+from src.utils import verbose_print
 from UnifiedPlanningProblem import UnifiedPlanningProblem
 
 
@@ -19,39 +17,39 @@ class AIPlan4GridAgent(BaseAgent):
         net = self.grid
         pp.rundcpp(net)
         _, ppci = _pd2ppc(net)
-        ptdf = makePTDF(ppci["baseMVA"], ppci["bus"], ppci["branch"])
+        ptdf = makePTDF(ppci["baseMVA"], ppci[cfg.BUS], ppci["branch"])
         return ptdf
 
     def _get_grid_params(self):
-        grid_params = {"gens": {}, "storages": {}, "lines": {}}
+        grid_params = {cfg.GENERATORS: {}, cfg.STORAGES: {}, cfg.TRANSMISSION_LINES: {}}
 
         # Generators parameters
-        grid_params["gens"]["pmin"] = self.env.gen_pmin
-        grid_params["gens"]["pmax"] = self.env.gen_pmax
-        grid_params["gens"]["redispatchable"] = self.env.gen_redispatchable
-        grid_params["gens"]["max_ramp_up"] = self.env.gen_max_ramp_up
-        grid_params["gens"]["max_ramp_down"] = self.env.gen_max_ramp_down
-        grid_params["gens"]["gen_cost_per_MW"] = self.env.gen_cost_per_MW
-        grid_params["gens"]["slack"] = self.grid.gen["slack"].to_numpy()
-        grid_params["gens"]["bus"] = self.grid.gen["bus"].to_numpy()
+        grid_params[cfg.GENERATORS][cfg.PMIN] = self.env.gen_pmin
+        grid_params[cfg.GENERATORS][cfg.PMAX] = self.env.gen_pmax
+        grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE] = self.env.gen_redispatchable
+        grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP] = self.env.gen_max_ramp_up
+        grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN] = self.env.gen_max_ramp_down
+        grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW] = self.env.gen_cost_per_MW
+        grid_params[cfg.GENERATORS][cfg.SLACK] = self.grid.gen[cfg.SLACK].to_numpy()
+        grid_params[cfg.GENERATORS][cfg.BUS] = self.grid.gen[cfg.BUS].to_numpy()
 
         # Storages parameters
-        grid_params["storages"]["Emax"] = self.env.storage_Emax
-        grid_params["storages"]["Emin"] = self.env.storage_Emin
-        grid_params["storages"]["loss"] = self.env.storage_loss
-        grid_params["storages"][
-            "charging_efficiency"
+        grid_params[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
+        grid_params[cfg.STORAGES][cfg.EMIN] = self.env.storage_Emin
+        grid_params[cfg.STORAGES][cfg.LOSS] = self.env.storage_loss
+        grid_params[cfg.STORAGES][
+            cfg.CHARGING_EFFICIENCY
         ] = self.env.storage_charging_efficiency
-        grid_params["storages"][
-            "discharging_efficiency"
+        grid_params[cfg.STORAGES][
+            cfg.DISCHARGING_EFFICIENCY
         ] = self.env.storage_discharging_efficiency
 
         # Lines parameters
-        transmission_lines = self.grid.line[["from_bus", "to_bus"]]
+        transmission_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
         for tl_idx in transmission_lines.index:
-            grid_params["lines"][tl_idx] = {
-                "from": transmission_lines.at[tl_idx, "from_bus"],
-                "to": transmission_lines.at[tl_idx, "to_bus"],
+            grid_params[cfg.TRANSMISSION_LINES][tl_idx] = {
+                cfg.FROM_BUS: transmission_lines.at[tl_idx, cfg.FROM_BUS],
+                cfg.TO_BUS: transmission_lines.at[tl_idx, cfg.TO_BUS],
             }
 
         return grid_params
@@ -59,24 +57,23 @@ class AIPlan4GridAgent(BaseAgent):
     def _get_reference_states(self):
         # TODO: to refactor with forcasted data
         reference_states = {
-            "gens": np.array([self.env.current_obs.gen_p for _ in range(self.horizon)]),
-            "loads": np.array(
+            cfg.GENERATORS: np.array(
+                [self.env.current_obs.gen_p for _ in range(self.horizon)]
+            ),
+            cfg.LOADS: np.array(
                 [self.env.current_obs.load_p for _ in range(self.horizon)]
             ),
-            "storages": np.array(
+            cfg.STORAGES: np.array(
                 [self.env.current_obs.storage_charge for _ in range(self.horizon)]
             ),
-            "flows": np.array(
+            cfg.FLOWS: np.array(
                 [self.env.current_obs.flow_bus_matrix()[0] for _ in range(self.horizon)]
             ),
         }
         return reference_states
 
     def __init__(
-        self,
-        env: Environment,
-        horizon: int,
-        logger: Optional[logging.Logger] = None,
+        self, env: Environment, horizon: int, solver: str, verbose: bool
     ) -> None:
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
             raise RuntimeError(
@@ -95,33 +92,28 @@ class AIPlan4GridAgent(BaseAgent):
         self.ptdf = self._get_ptdf()
         self.grid_params = self._get_grid_params()
         self.reference_states = self._get_reference_states()
+        self.solver = solver
 
-        if logger is None:
-            self.logger: logging.Logger = logging.getLogger(__name__)
-            self.logger.disabled = True
-            # self.logger.disabled = False
-            # self.logger.addHandler(logging.StreamHandler(sys.stdout))
-            # self.logger.setLevel(level=logging.DEBUG)
-        else:
-            self.logger: logging.Logger = logger.getChild("AIPlan4GridAgent")
+        self._VERBOSE = verbose
+        global vprint
+        vprint = verbose_print(self._VERBOSE)
 
-    def act(
-        self, obs: BaseObservation, reward: float = 1.0, done: bool = False
-    ) -> BaseAction:
-        print("Creating unified planning problem")
+    def act(self):
+        vprint("Creating UP problem...")
         upb = UnifiedPlanningProblem(
             self.horizon,
             self.ptdf,
             self.grid_params,
             self.reference_states,
+            self.solver,
         )
-        upb.print_summary()
-        upb.print_problem()
-        print("Solving unified planning problem")
+        vprint("Saving UP problem in tmp/problem.up")
+        upb.save_problem()
+        vprint("Solving UP problem...")
         start = timer()
         upb.solve()
         end = timer()
-        print(f"Problem solved in {end - start} seconds")
+        vprint(f"Problem solved in {end - start} seconds")
 
     def step():
         pass
