@@ -6,8 +6,8 @@ import numpy as np
 import unified_planning as up
 from unified_planning.shortcuts import *
 
-import src.config as cfg
-from src.utils import compute_size_array
+import config as cfg
+from utils import compute_size_array
 
 
 class UnifiedPlanningProblem:
@@ -16,7 +16,7 @@ class UnifiedPlanningProblem:
         horizon: int,
         ptdf: list[list],
         grid_params: dict,
-        reference_states: dict,
+        forecasted_states: dict,
         solver: str,
     ):
         self.horizon = horizon
@@ -25,7 +25,7 @@ class UnifiedPlanningProblem:
         self.grid_params = grid_params
         self.nb_gens = len(grid_params[cfg.GENERATORS][cfg.PMAX])
         self.nb_storages = len(grid_params[cfg.STORAGES][cfg.EMAX])
-        self.reference_states = reference_states
+        self.forecasted_states = forecasted_states
         self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
@@ -91,14 +91,14 @@ class UnifiedPlanningProblem:
                     )
                     action.add_precondition(
                         GE(
-                            float(self.reference_states[cfg.GENERATORS][0][gen_id]),
+                            float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                             i
                             - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id],
                         )
                     )
                     action.add_precondition(
                         LE(
-                            float(self.reference_states[cfg.GENERATORS][0][gen_id]),
+                            float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                             i
                             + self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][
                                 gen_id
@@ -117,14 +117,19 @@ class UnifiedPlanningProblem:
                             * (
                                 self.pgen[gen_id][0]
                                 - float(
-                                    self.reference_states[cfg.GENERATORS][0][gen_id]
+                                    self.forecasted_states[cfg.GENERATORS][0][gen_id]
                                 )
                             ),
                         )
                         action.add_effect(
                             self.congestions[k][0],
                             True,
-                            condition=GE(self.flows[k][0], 50),
+                            condition=GE(self.flows[k][0], 100),
+                        )
+                        action.add_effect(
+                            self.congestions[k][0],
+                            False,
+                            condition=LT(self.flows[k][0], 100),
                         )
                     if len(self.slack_gens) > 1:
                         raise ("More than one slack generator!")
@@ -132,7 +137,7 @@ class UnifiedPlanningProblem:
                         action.add_decrease_effect(
                             self.pgen[self.slack_gens[0]][0],
                             self.pgen[gen_id][0]
-                            - float(self.reference_states[cfg.GENERATORS][0][gen_id]),
+                            - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                         )
 
                 for t in range(1, self.horizon):
@@ -179,16 +184,21 @@ class UnifiedPlanningProblem:
                                 * (
                                     self.pgen[gen_id][t]
                                     - float(
-                                        self.reference_states[cfg.GENERATORS][t][gen_id]
+                                        self.forecasted_states[cfg.GENERATORS][t][
+                                            gen_id
+                                        ]
                                     )
                                 ),
                             )
                             action.add_effect(
                                 self.congestions[k][t],
                                 True,
-                                condition=GE(
-                                    self.flows[k][t], 50
-                                ),  # TODO: add max flow on each line
+                                condition=GE(self.flows[k][t], 100),
+                            )
+                            action.add_effect(
+                                self.congestions[k][t],
+                                False,
+                                condition=LT(self.flows[k][t], 100),
                             )
                         if len(self.slack_gens) > 1:
                             raise ("More than one slack generator!")
@@ -197,7 +207,7 @@ class UnifiedPlanningProblem:
                                 self.pgen[self.slack_gens[0]][t],
                                 self.pgen[gen_id][t]
                                 - float(
-                                    self.reference_states[cfg.GENERATORS][t][gen_id]
+                                    self.forecasted_states[cfg.GENERATORS][t][gen_id]
                                 ),
                             )
 
@@ -206,7 +216,6 @@ class UnifiedPlanningProblem:
         #     emax = self.grid_params[cfg.STORAGES][cfg.EMAX][storage_id]
         #     emin = self.grid_params[cfg.STORAGES]["Emin"][storage_id]
         #     delta = int(emax - emin)
-        # TODO: add storage actions
 
     def create_problem(self):
         problem = Problem("GridStability")
@@ -231,7 +240,7 @@ class UnifiedPlanningProblem:
             for t in range(self.horizon):
                 problem.set_initial_value(
                     self.pgen[gen_id][t],
-                    float(self.reference_states[cfg.GENERATORS][0][0]),
+                    float(self.forecasted_states[cfg.GENERATORS][0][0]),
                 )
 
         # for storage_id in range(self.nb_storages):
@@ -241,12 +250,17 @@ class UnifiedPlanningProblem:
 
         for k in range(self.nb_transmission_lines):
             for t in range(self.horizon):
-                problem.set_initial_value(self.congestions[k][t], False)
+                problem.set_initial_value(
+                    self.congestions[k][t],
+                    bool(self.forecasted_states[cfg.TRANSMISSION_LINES][t][k]),
+                )
                 i = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.FROM_BUS]
                 j = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.TO_BUS]
                 problem.set_initial_value(
-                    self.flows[k][t], float(self.reference_states[cfg.FLOWS][t][i][j])
+                    self.flows[k][t], float(self.forecasted_states[cfg.FLOWS][t][i][j])
                 )
+
+        problem.set_initial_value(self.congestions[11][0], True)
 
         # add quality metrics for optimization + goal
         problem.add_quality_metric(
@@ -277,10 +291,3 @@ class UnifiedPlanningProblem:
         with OneshotPlanner(name=self.solver) as planner:
             plan = planner.solve(self.problem).plan
             print(plan)
-            # with PlanValidator(
-            #     problem_kind=self.problem.kind, plan_kind=plan.kind
-            # ) as validator:
-            #     validation = validator.validate(self.problem, plan)
-            #     Valid = up.engines.ValidationResultStatus.VALID
-            #     assert validation.status == Valid
-            #     print("Plan is valid")

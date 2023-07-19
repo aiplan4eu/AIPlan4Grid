@@ -10,7 +10,7 @@ HORIZON = "horizon"
 SOLVER = "solver"
 
 # DO NOT CHANGE THE FOLLOWING STRINGS (USED BY THE BACKEND)
-###################################################
+###########################################################
 SLACK = "slack"
 BUS = "bus"
 
@@ -36,7 +36,7 @@ FROM_BUS = "from_bus"
 TO_BUS = "to_bus"
 
 LOADS = "loads"
-###################################################
+###########################################################
 
 TMP_DIR = pjoin(BASE_DIR, "tmp")
 UP_PROBLEM = "problem.up"

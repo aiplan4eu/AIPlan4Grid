@@ -7,7 +7,7 @@ from AIPlan4GridAgent import AIPlan4GridAgent
 from grid2op.Backend import PandaPowerBackend
 from grid2op.Environment import Environment
 
-import src.config as cfg
+import config as cfg
 
 
 def fill_parser(parser: argparse.ArgumentParser):

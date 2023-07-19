@@ -2,21 +2,19 @@ from os.path import join as pjoin
 from timeit import default_timer as timer
 
 import numpy as np
-import pandapower as pp
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
-import src.config as cfg
-from src.utils import verbose_print
+import config as cfg
+from utils import verbose_print
 from UnifiedPlanningProblem import UnifiedPlanningProblem
 
 
 class AIPlan4GridAgent(BaseAgent):
     def _get_ptdf(self):
         net = self.grid
-        pp.rundcpp(net)
         _, ppci = _pd2ppc(net)
         ptdf = makePTDF(ppci["baseMVA"], ppci[cfg.BUS], ppci["branch"])
         return ptdf
@@ -55,23 +53,28 @@ class AIPlan4GridAgent(BaseAgent):
 
         return grid_params
 
-    def _get_reference_states(self):
-        # TODO: to refactor with forcasted data
-        reference_states = {
-            cfg.GENERATORS: np.array(
-                [self.env.current_obs.gen_p for _ in range(self.horizon)]
-            ),
-            cfg.LOADS: np.array(
-                [self.env.current_obs.load_p for _ in range(self.horizon)]
-            ),
+    def _get_forecasted_states(self):
+        simobs = [self.env.reset()]
+        dn_action = self.env.action_space({})
+        for _ in range(self.horizon):
+            obs, *_ = simobs[-1].simulate(dn_action)
+            simobs.append(obs)
+
+        states = {
+            cfg.GENERATORS: np.array([simobs[i].gen_p for i in range(self.horizon)]),
+            cfg.LOADS: np.array([simobs[i].load_p for i in range(self.horizon)]),
             cfg.STORAGES: np.array(
-                [self.env.current_obs.storage_charge for _ in range(self.horizon)]
+                [simobs[i].storage_charge for i in range(self.horizon)]
             ),
             cfg.FLOWS: np.array(
-                [self.env.current_obs.flow_bus_matrix()[0] for _ in range(self.horizon)]
+                [simobs[i].flow_bus_matrix()[0] for i in range(self.horizon)]
+            ),
+            cfg.TRANSMISSION_LINES: np.array(
+                [simobs[i].rho >= 1 for i in range(self.horizon)]
             ),
         }
-        return reference_states
+
+        return states
 
     def __init__(
         self, env: Environment, horizon: int, solver: str, verbose: bool
@@ -92,7 +95,7 @@ class AIPlan4GridAgent(BaseAgent):
         self.grid = self.env.backend._grid
         self.ptdf = self._get_ptdf()
         self.grid_params = self._get_grid_params()
-        self.reference_states = self._get_reference_states()
+        self.forecasted_states = self._get_forecasted_states()
         self.solver = solver
 
         self._VERBOSE = verbose
@@ -105,7 +108,7 @@ class AIPlan4GridAgent(BaseAgent):
             self.horizon,
             self.ptdf,
             self.grid_params,
-            self.reference_states,
+            self.forecasted_states,
             self.solver,
         )
         vprint(f"Saving UP problem in {pjoin(cfg.TMP_DIR, cfg.UP_PROBLEM)}")
