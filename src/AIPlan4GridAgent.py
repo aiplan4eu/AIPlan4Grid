@@ -102,6 +102,15 @@ class AIPlan4GridAgent(BaseAgent):
         global vprint
         vprint = verbose_print(self._VERBOSE)
 
+    def display_grid(self):
+        from grid2op.PlotGrid import PlotMatplot
+        import matplotlib.pyplot as plt
+
+        plot_helper = PlotMatplot(self.env.observation_space)
+        obs = self.env.reset()
+        plot_helper.plot_obs(obs)
+        plt.show()
+
     def act(self):
         vprint("Creating UP problem...")
         upb = UnifiedPlanningProblem(
