@@ -1,6 +1,5 @@
 import os
 from os.path import join as pjoin
-from timeit import default_timer as timer
 
 import numpy as np
 import unified_planning as up
@@ -26,7 +25,7 @@ class UnifiedPlanningProblem:
         self.nb_gens = len(grid_params[cfg.GENERATORS][cfg.PMAX])
         self.nb_storages = len(grid_params[cfg.STORAGES][cfg.EMAX])
         self.forecasted_states = forecasted_states
-        self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
+        self.nb_transmission_lines = 20  # len(grid_params[cfg.TRANSMISSION_LINES])
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
 
@@ -86,7 +85,7 @@ class UnifiedPlanningProblem:
                     )
                     action = self.prod_target[-1]
                     self.actions_costs[action] = (
-                        i
+                        abs(i - self.forecasted_states[cfg.GENERATORS][0][gen_id])
                         * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][gen_id]
                     )
                     action.add_precondition(
@@ -124,12 +123,12 @@ class UnifiedPlanningProblem:
                         action.add_effect(
                             self.congestions[k][0],
                             True,
-                            condition=GE(self.flows[k][0], 100),
+                            condition=GE(self.flows[k][0], 50),
                         )
                         action.add_effect(
                             self.congestions[k][0],
                             False,
-                            condition=LT(self.flows[k][0], 100),
+                            condition=LT(self.flows[k][0], 50),
                         )
                     if len(self.slack_gens) > 1:
                         raise ("More than one slack generator!")
@@ -147,7 +146,7 @@ class UnifiedPlanningProblem:
                         )
                         action = self.prod_target[-1]
                         self.actions_costs[action] = (
-                            i
+                            abs(i - self.pgen[gen_id][t - 1])
                             * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][
                                 gen_id
                             ]
@@ -193,12 +192,12 @@ class UnifiedPlanningProblem:
                             action.add_effect(
                                 self.congestions[k][t],
                                 True,
-                                condition=GE(self.flows[k][t], 100),
+                                condition=GE(self.flows[k][t], 50),
                             )
                             action.add_effect(
                                 self.congestions[k][t],
                                 False,
-                                condition=LT(self.flows[k][t], 100),
+                                condition=LT(self.flows[k][t], 50),
                             )
                         if len(self.slack_gens) > 1:
                             raise ("More than one slack generator!")
@@ -254,18 +253,17 @@ class UnifiedPlanningProblem:
                     self.congestions[k][t],
                     bool(self.forecasted_states[cfg.TRANSMISSION_LINES][t][k]),
                 )
-                i = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.FROM_BUS]
-                j = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.TO_BUS]
-                problem.set_initial_value(
-                    self.flows[k][t], float(self.forecasted_states[cfg.FLOWS][t][i][j])
-                )
+                # i = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.FROM_BUS]
+                # j = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.TO_BUS]
+                problem.set_initial_value(self.flows[k][t], float(0))
 
-        problem.set_initial_value(self.congestions[11][0], True)
+        # problem.set_initial_value(self.flows[0][0], float(51))
+        problem.set_initial_value(self.congestions[0][0], True)
 
         # add quality metrics for optimization + goal
-        problem.add_quality_metric(
-            up.model.metrics.MinimizeActionCosts(self.actions_costs)
-        )
+        # problem.add_quality_metric(
+        #     up.model.metrics.MinimizeActionCosts(self.actions_costs)
+        # )
 
         goals = [
             Not(self.congestions[k][t])
