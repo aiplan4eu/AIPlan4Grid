@@ -34,6 +34,10 @@ TRANSMISSION_LINES = "transmission_lines"
 FLOWS = "flows"
 FROM_BUS = "from_bus"
 TO_BUS = "to_bus"
+HV_BUS = "hv_bus"
+LV_BUS = "lv_bus"
+STATUS = "status"
+MAX_FLOW = "max_flow"
 
 LOADS = "loads"
 ###########################################################

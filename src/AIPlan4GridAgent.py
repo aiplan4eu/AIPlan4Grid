@@ -1,3 +1,4 @@
+from math import atan, cos, sqrt
 from os.path import join as pjoin
 from timeit import default_timer as timer
 
@@ -8,8 +9,8 @@ from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
 import config as cfg
-from utils import verbose_print
 from UnifiedPlanningProblem import UnifiedPlanningProblem
+from utils import verbose_print
 
 
 class AIPlan4GridAgent(BaseAgent):
@@ -44,37 +45,70 @@ class AIPlan4GridAgent(BaseAgent):
         ] = self.env.storage_discharging_efficiency
 
         # Lines parameters
-        transmission_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
-        for tl_idx in transmission_lines.index:
+        power_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
+        transfo_lines = self.grid.trafo[[cfg.HV_BUS, cfg.LV_BUS]]
+
+        max_flows = (
+            (
+                self.env.backend.lines_or_pu_to_kv
+                * self.env.backend.get_thermal_limit()
+                / 1000
+            )
+            * sqrt(3)
+            * cos(atan(0.4))
+        )
+
+        for tl_idx in power_lines.index:
             grid_params[cfg.TRANSMISSION_LINES][tl_idx] = {
-                cfg.FROM_BUS: transmission_lines.at[tl_idx, cfg.FROM_BUS],
-                cfg.TO_BUS: transmission_lines.at[tl_idx, cfg.TO_BUS],
+                cfg.FROM_BUS: power_lines.at[tl_idx, cfg.FROM_BUS],
+                cfg.TO_BUS: power_lines.at[tl_idx, cfg.TO_BUS],
             }
+        for tl_idx in transfo_lines.index:
+            grid_params[cfg.TRANSMISSION_LINES][len(power_lines.index) + tl_idx] = {
+                cfg.FROM_BUS: transfo_lines.at[tl_idx, cfg.HV_BUS],
+                cfg.TO_BUS: transfo_lines.at[tl_idx, cfg.LV_BUS],
+            }
+
+        for tl_index in grid_params[cfg.TRANSMISSION_LINES].keys():
+            grid_params[cfg.TRANSMISSION_LINES][tl_index][
+                cfg.STATUS
+            ] = self.env.backend.get_line_status()[tl_index]
+            grid_params[cfg.TRANSMISSION_LINES][tl_index][cfg.MAX_FLOW] = max_flows[
+                tl_index
+            ]
 
         return grid_params
 
-    def _get_forecasted_states(self):
-        simobs = [self.env.reset()]
-        dn_action = self.env.action_space({})
-        for _ in range(self.horizon):
-            obs, *_ = simobs[-1].simulate(dn_action)
-            simobs.append(obs)
+    def _get_states(self):
+        base_obs = self.env.reset()
+        dn_act = self.env.action_space({})
 
-        states = {
-            cfg.GENERATORS: np.array([simobs[i].gen_p for i in range(self.horizon)]),
-            cfg.LOADS: np.array([simobs[i].load_p for i in range(self.horizon)]),
+        sim_obs = [base_obs.simulate(dn_act)[0]]
+        for _ in range(self.horizon - 1):
+            obs, *_ = sim_obs[-1].simulate(dn_act)
+            sim_obs.append(obs)
+
+        forecasted_states = {
+            cfg.GENERATORS: np.array([sim_obs[t].gen_p for t in range(self.horizon)]),
+            cfg.LOADS: np.array([sim_obs[t].load_p for t in range(self.horizon)]),
             cfg.STORAGES: np.array(
-                [simobs[i].storage_charge for i in range(self.horizon)]
+                [sim_obs[t].storage_charge for t in range(self.horizon)]
             ),
-            cfg.FLOWS: np.array(
-                [simobs[i].flow_bus_matrix()[0] for i in range(self.horizon)]
-            ),
+            cfg.FLOWS: np.array([sim_obs[t].p_or for t in range(self.horizon)]),
             cfg.TRANSMISSION_LINES: np.array(
-                [simobs[i].rho >= 1 for i in range(self.horizon)]
+                [sim_obs[t].rho >= 1 for t in range(self.horizon)]
             ),
         }
 
-        return states
+        initial_states = {
+            cfg.GENERATORS: base_obs.gen_p,
+            cfg.LOADS: base_obs.load_p,
+            cfg.STORAGES: base_obs.storage_charge,
+            cfg.FLOWS: base_obs.p_or,
+            cfg.TRANSMISSION_LINES: base_obs.rho >= 1,
+        }
+
+        return initial_states, forecasted_states
 
     def __init__(
         self, env: Environment, horizon: int, solver: str, verbose: bool
@@ -93,9 +127,8 @@ class AIPlan4GridAgent(BaseAgent):
         self.env = env
         self.horizon = horizon
         self.grid = self.env.backend._grid
-        self.ptdf = self._get_ptdf()
         self.grid_params = self._get_grid_params()
-        self.forecasted_states = self._get_forecasted_states()
+        self.initial_states, self.forecasted_states = self._get_states()
         self.solver = solver
 
         self._VERBOSE = verbose
@@ -103,8 +136,8 @@ class AIPlan4GridAgent(BaseAgent):
         vprint = verbose_print(self._VERBOSE)
 
     def display_grid(self):
-        from grid2op.PlotGrid import PlotMatplot
         import matplotlib.pyplot as plt
+        from grid2op.PlotGrid import PlotMatplot
 
         plot_helper = PlotMatplot(self.env.observation_space)
         obs = self.env.reset()
@@ -112,11 +145,13 @@ class AIPlan4GridAgent(BaseAgent):
         plt.show()
 
     def act(self):
+        self.ptdf = self._get_ptdf()
         vprint("Creating UP problem...")
         upb = UnifiedPlanningProblem(
             self.horizon,
             self.ptdf,
             self.grid_params,
+            self.initial_states,
             self.forecasted_states,
             self.solver,
         )
