@@ -37,7 +37,6 @@ def parse_ini(ini_file_path: str) -> dict:
 
 def _routine(env: Environment, agent: AIPlan4GridAgent):
     """Routine for the agent"""
-    env.set_id(0)
     agent.act()
 
 

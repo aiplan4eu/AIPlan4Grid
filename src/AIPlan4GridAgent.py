@@ -125,6 +125,7 @@ class AIPlan4GridAgent(BaseAgent):
             )
         super().__init__(env.action_space)
         self.env = env
+        self.env.set_id(0)
         self.horizon = horizon
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
