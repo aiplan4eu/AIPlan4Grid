@@ -81,7 +81,7 @@ class UnifiedPlanningProblem:
                 pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
                 delta = int(pmax - pmin)
 
-                for i in range(82, 85):
+                for i in range(80, 100):
                     self.prod_target.append(
                         InstantaneousAction(f"prod_target_{gen_id}_{0}_{i}")
                     )
