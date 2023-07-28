@@ -6,7 +6,7 @@ from unified_planning.shortcuts import *
 
 import config as cfg
 from utils import compute_size_array
-
+from unified_planning.engines.sequential_simulator import evaluate_quality_metric, evaluate_quality_metric_in_initial_state
 
 class UnifiedPlanningProblem:
     def __init__(
@@ -42,6 +42,13 @@ class UnifiedPlanningProblem:
             ]
         )
 
+        self.pgen_exp = np.array(
+            [
+                [FluentExp(self.pgen[gen_id][t]) for t in range(self.horizon)]
+                for gen_id in range(self.nb_gens)
+            ]
+        )
+
         # self.soc = np.array(
         #     [
         #         [
@@ -59,9 +66,23 @@ class UnifiedPlanningProblem:
             ]
         )
 
+        self.congestions_exp = np.array(
+            [
+                [FluentExp(self.congestions[k][t]) for t in range(self.horizon)]
+                for k in range(self.nb_transmission_lines)
+            ]
+        )
+
         self.flows = np.array(
             [
                 [Fluent(f"flow_{k}_{t}", RealType()) for t in range(self.horizon)]
+                for k in range(self.nb_transmission_lines)
+            ]
+        )
+
+        self.flows_exp = np.array(
+            [
+                [FluentExp(self.flows[k][t]) for t in range(self.horizon)]
                 for k in range(self.nb_transmission_lines)
             ]
         )
@@ -81,7 +102,7 @@ class UnifiedPlanningProblem:
                 pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
                 delta = int(pmax - pmin)
 
-                for i in range(80, 100):
+                for i in range(82, 85):
                     self.prod_target.append(
                         InstantaneousAction(f"prod_target_{gen_id}_{0}_{i}")
                     )
@@ -130,7 +151,7 @@ class UnifiedPlanningProblem:
                                 ]
                             )
                             * (
-                                self.pgen[gen_id][0]
+                                i
                                 - float(
                                     self.forecasted_states[cfg.GENERATORS][0][gen_id]
                                 )
@@ -141,7 +162,8 @@ class UnifiedPlanningProblem:
                             True,
                             condition=And(
                                 GE(
-                                    self.flows[k][0],
+                                    self.flows[k][0] + float(self.ptdf[k][self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]])
+                                    * (i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id])),
                                     float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -149,7 +171,8 @@ class UnifiedPlanningProblem:
                                     ),
                                 ),
                                 LE(
-                                    self.flows[k][0],
+                                    self.flows[k][0] + float(self.ptdf[k][self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]])
+                                    * (i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id])),
                                     float(
                                         -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -163,7 +186,8 @@ class UnifiedPlanningProblem:
                             False,
                             condition=And(
                                 LT(
-                                    self.flows[k][0],
+                                    self.flows[k][0] + float(self.ptdf[k][self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]])
+                                    * (i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id])),
                                     float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -171,11 +195,10 @@ class UnifiedPlanningProblem:
                                     ),
                                 ),
                                 GT(
-                                    self.flows[k][0],
+                                    self.flows[k][0] + float(self.ptdf[k][self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]])
+                                    * (i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id])),
                                     float(
-                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                            cfg.MAX_FLOW
-                                        ]
+                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]
                                     ),
                                 ),
                             ),
@@ -185,7 +208,7 @@ class UnifiedPlanningProblem:
                     else:
                         action.add_decrease_effect(
                             self.pgen[1][0],
-                            self.pgen[gen_id][0]
+                            i
                             - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                         )
 
@@ -316,6 +339,7 @@ class UnifiedPlanningProblem:
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
 
+
         # add actions
         problem.add_actions(self.prod_target)
         # problem.add_actions(self.soc_target)
@@ -343,13 +367,12 @@ class UnifiedPlanningProblem:
                     self.flows[k][t], float(self.forecasted_states[cfg.FLOWS][t][k])
                 )
 
-        problem.set_initial_value(self.flows[0][0], 125.0)
+        problem.set_initial_value(self.flows[0][0], 120)
         problem.set_initial_value(self.congestions[0][0], True)
 
         # add quality metrics for optimization + goal
-        problem.add_quality_metric(
-            up.model.metrics.MinimizeActionCosts(self.actions_costs)
-        )
+        self.actionCost=up.model.metrics.MinimizeActionCosts(self.actions_costs)
+        problem.add_quality_metric(self.actionCost)
 
         goals = [
             Not(self.congestions[k][t])
@@ -360,6 +383,8 @@ class UnifiedPlanningProblem:
         problem.add_goal(And(goals))
 
         self.problem = problem
+
+
 
     def save_problem(self):
         os.makedirs(cfg.TMP_DIR, exist_ok=True)
@@ -375,3 +400,27 @@ class UnifiedPlanningProblem:
         with OneshotPlanner(name=self.solver) as planner:
             plan = planner.solve(self.problem)
             print(plan)
+        with SequentialSimulator(problem=self.problem) as simulator:
+            initial_state = simulator.get_initial_state()
+            minimize_cost_value = evaluate_quality_metric_in_initial_state(simulator, self.actionCost)
+            states = [initial_state]
+            for ai in plan.plan.actions:
+                print(f'action: {ai}')
+                state_test = simulator.apply(initial_state,ai)
+                states.append(state_test)
+                print(f'gen 0 new value: {state_test.get_value(self.pgen_exp[0][0])}')
+                print(f'flow new value: {state_test.get_value(self.flows_exp[0][0])}')
+                print(f'congested status new value: {state_test.get_value(self.congestions_exp[0][0])}')
+                print(f'gen 1 (slack) new value: {state_test.get_value(self.pgen_exp[1][0])}')
+                minimize_cost_value = evaluate_quality_metric(
+                    simulator,
+                    self.actionCost,
+                    minimize_cost_value,
+                    initial_state,
+                    ai.action,
+                    ai.actual_parameters,
+                    state_test
+                )
+                print(f'actions costs: {minimize_cost_value}')
+
+
