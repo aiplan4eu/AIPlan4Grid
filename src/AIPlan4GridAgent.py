@@ -1,5 +1,4 @@
 from math import atan, cos, sqrt
-from os.path import join as pjoin
 from timeit import default_timer as timer
 
 import numpy as np
@@ -56,7 +55,7 @@ class AIPlan4GridAgent(BaseAgent):
             )
             * sqrt(3)
             * cos(atan(0.4))
-        )
+        )  # from Ampere to MW
 
         for tl_idx in power_lines.index:
             grid_params[cfg.TRANSMISSION_LINES][tl_idx] = {
@@ -111,8 +110,12 @@ class AIPlan4GridAgent(BaseAgent):
         return initial_states, forecasted_states
 
     def __init__(
-        self, env: Environment, horizon: int, solver: str, verbose: bool
-    ) -> None:
+        self,
+        env: Environment,
+        horizon: int,
+        solver: str,
+        verbose: bool,
+    ):
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
             raise RuntimeError(
                 "Impossible to create this class with an environment that does not allow "
@@ -148,7 +151,7 @@ class AIPlan4GridAgent(BaseAgent):
     def act(self):
         self.ptdf = self._get_ptdf()
         vprint("Creating UP problem...")
-        upb = UnifiedPlanningProblem(
+        upp = UnifiedPlanningProblem(
             self.horizon,
             self.ptdf,
             self.grid_params,
@@ -156,11 +159,11 @@ class AIPlan4GridAgent(BaseAgent):
             self.forecasted_states,
             self.solver,
         )
-        vprint(f"Saving UP problem in {pjoin(cfg.TMP_DIR, cfg.UP_PROBLEM)}")
-        upb.save_problem()
+        vprint(f"Saving UP problem in {cfg.TMP_DIR}")
+        upp.save_problem()
         vprint("Solving UP problem...")
         start = timer()
-        upb.solve()
+        upp.solve()
         end = timer()
         vprint(f"Problem solved in {end - start} seconds")
 

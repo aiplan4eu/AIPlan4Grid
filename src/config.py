@@ -43,4 +43,5 @@ LOADS = "loads"
 ###########################################################
 
 TMP_DIR = pjoin(BASE_DIR, "tmp")
-UP_PROBLEM = "problem.up"
+UPP_PROBLEM = "problem.upp"
+PDDL_PROBLEM = "problem.pddl"

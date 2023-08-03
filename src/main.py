@@ -5,7 +5,6 @@ from os.path import join as pjoin
 import grid2op
 from AIPlan4GridAgent import AIPlan4GridAgent
 from grid2op.Backend import PandaPowerBackend
-from grid2op.Environment import Environment
 
 import config as cfg
 
@@ -35,7 +34,7 @@ def parse_ini(ini_file_path: str) -> dict:
     return parameters
 
 
-def _routine(env: Environment, agent: AIPlan4GridAgent):
+def _routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
     agent.act()
 
@@ -48,15 +47,17 @@ def main(args: argparse.Namespace):
         else:
             parameters = parse_ini(args.config_file)
         env = grid2op.make(
-            parameters[cfg.ENV_NAME], test=True, backend=PandaPowerBackend()
+            dataset=parameters[cfg.ENV_NAME],
+            test=True,
+            backend=PandaPowerBackend(),
         )
         agent = AIPlan4GridAgent(
-            env,
-            parameters[cfg.HORIZON],
+            env=env,
+            horizon=parameters[cfg.HORIZON],
             solver=parameters[cfg.SOLVER],
             verbose=True,
         )
-        _routine(env, agent)
+        _routine(agent)
     except Exception as e:
         print(e)
 
