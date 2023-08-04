@@ -12,10 +12,6 @@ from unified_planning.shortcuts import *
 
 import config as cfg
 from utils import compute_size_array
-from unified_planning.engines.sequential_simulator import (
-    evaluate_quality_metric,
-    evaluate_quality_metric_in_initial_state,
-)
 
 
 class UnifiedPlanningProblem:
@@ -41,7 +37,7 @@ class UnifiedPlanningProblem:
         self.solver = solver
 
         self.create_fluents()
-        self.create_gen_actions()
+        self.create_actions()
         self.create_problem()
 
     def create_fluents(self):
@@ -88,11 +84,28 @@ class UnifiedPlanningProblem:
             ]
         )
 
-    def create_gen_actions(self):
-        self.actions_costs = {}
+        self.update_status = np.array(
+            [
+                [
+                    Fluent(f"update_status_{k}_{t}", BoolType())
+                    for t in range(self.horizon)
+                ]
+                for k in range(self.nb_transmission_lines)
+            ]
+        )
+
+        self.update_status_exp = np.array(
+            [
+                [FluentExp(self.update_status[k][t]) for t in range(self.horizon)]
+                for k in range(self.nb_transmission_lines)
+            ]
+        )
+
+    def create_gen_actions(self) -> dict:
+        actions_costs = {}
 
         # Creating actions
-        self.prod_target = []
+        self.pgen_actions = []
 
         # for horizon 0
         for gen_id in range(self.nb_gens):
@@ -105,12 +118,12 @@ class UnifiedPlanningProblem:
                 pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
                 delta = int(pmax - pmin)
 
-                for i in range(82, 85):
-                    self.prod_target.append(
+                for i in range(82, 86):
+                    self.pgen_actions.append(
                         InstantaneousAction(f"prod_target_{gen_id}_{0}_{i}")
                     )
-                    action = self.prod_target[-1]
-                    self.actions_costs[action] = float(
+                    action = self.pgen_actions[-1]
+                    actions_costs[action] = float(
                         abs(i - self.initial_states[cfg.GENERATORS][gen_id])
                         * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][gen_id]
                     )
@@ -150,41 +163,24 @@ class UnifiedPlanningProblem:
                     )
                     action.add_effect(self.pgen[gen_id][0], i)
                     for k in range(self.nb_transmission_lines):
+                        action.add_precondition(Iff(self.update_status[k][0], False))
+                        diff = float(
+                            self.ptdf[k][
+                                self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]
+                            ]
+                        ) * (
+                            i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id])
+                        )
                         action.add_increase_effect(
                             self.flows[k][0],
-                            float(
-                                self.ptdf[k][
-                                    self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]
-                                ]
-                            )
-                            * (
-                                i
-                                - float(
-                                    self.forecasted_states[cfg.GENERATORS][0][gen_id]
-                                )
-                            ),
+                            diff,
                         )
                         action.add_effect(
                             self.congestions[k][0],
                             True,
-                            condition=And(
+                            condition=Or(
                                 GE(
-                                    self.flows[k][0]
-                                    + float(
-                                        self.ptdf[k][
-                                            self.grid_params[cfg.GENERATORS][cfg.BUS][
-                                                gen_id
-                                            ]
-                                        ]
-                                    )
-                                    * (
-                                        i
-                                        - float(
-                                            self.forecasted_states[cfg.GENERATORS][0][
-                                                gen_id
-                                            ]
-                                        )
-                                    ),
+                                    self.flows[k][0] + diff,
                                     float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -192,22 +188,7 @@ class UnifiedPlanningProblem:
                                     ),
                                 ),
                                 LE(
-                                    self.flows[k][0]
-                                    + float(
-                                        self.ptdf[k][
-                                            self.grid_params[cfg.GENERATORS][cfg.BUS][
-                                                gen_id
-                                            ]
-                                        ]
-                                    )
-                                    * (
-                                        i
-                                        - float(
-                                            self.forecasted_states[cfg.GENERATORS][0][
-                                                gen_id
-                                            ]
-                                        )
-                                    ),
+                                    self.flows[k][0] + diff,
                                     float(
                                         -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -221,22 +202,7 @@ class UnifiedPlanningProblem:
                             False,
                             condition=And(
                                 LT(
-                                    self.flows[k][0]
-                                    + float(
-                                        self.ptdf[k][
-                                            self.grid_params[cfg.GENERATORS][cfg.BUS][
-                                                gen_id
-                                            ]
-                                        ]
-                                    )
-                                    * (
-                                        i
-                                        - float(
-                                            self.forecasted_states[cfg.GENERATORS][0][
-                                                gen_id
-                                            ]
-                                        )
-                                    ),
+                                    self.flows[k][0] + diff,
                                     float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -244,22 +210,7 @@ class UnifiedPlanningProblem:
                                     ),
                                 ),
                                 GT(
-                                    self.flows[k][0]
-                                    + float(
-                                        self.ptdf[k][
-                                            self.grid_params[cfg.GENERATORS][cfg.BUS][
-                                                gen_id
-                                            ]
-                                        ]
-                                    )
-                                    * (
-                                        i
-                                        - float(
-                                            self.forecasted_states[cfg.GENERATORS][0][
-                                                gen_id
-                                            ]
-                                        )
-                                    ),
+                                    self.flows[k][0] + diff,
                                     float(
                                         -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -268,6 +219,7 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                         )
+                        action.add_effect(self.update_status[k][0], True)
                     if len(self.slack_gens) > 1:
                         raise ("More than one slack generator!")
                     else:
@@ -276,9 +228,13 @@ class UnifiedPlanningProblem:
                             i
                             - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                         )
-
                 # for horizon > 1
                 # TODO
+                return actions_costs
+
+    def create_actions(self):
+        gen_costs = self.create_gen_actions()
+        self.actions_costs = {**gen_costs}
 
     def create_problem(self):
         problem = Problem("GridStability")
@@ -292,9 +248,10 @@ class UnifiedPlanningProblem:
             for t in range(self.horizon):
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
+                problem.add_fluent(self.update_status[k][t])
 
         # add actions
-        problem.add_actions(self.prod_target)
+        problem.add_actions(self.pgen_actions)
 
         # add initial states
         for gen_id in range(self.nb_gens):
@@ -313,6 +270,7 @@ class UnifiedPlanningProblem:
                 problem.set_initial_value(
                     self.flows[k][t], float(self.forecasted_states[cfg.FLOWS][t][k])
                 )
+                problem.set_initial_value(self.update_status[k][t], False)
 
         problem.set_initial_value(self.flows[0][0], 120)
         problem.set_initial_value(self.congestions[0][0], True)
@@ -322,7 +280,7 @@ class UnifiedPlanningProblem:
         problem.add_quality_metric(self.quality_metric)
 
         goals = [
-            Not(self.congestions[k][t])
+            Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
             for t in range(self.horizon)
         ]
@@ -339,7 +297,7 @@ class UnifiedPlanningProblem:
             f.write(
                 f"number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
-            f.write(f"number of actions: {len(self.prod_target)}\n")
+            f.write(f"number of actions: {len(self.pgen_actions)}\n")
             f.write(self.problem.__str__())
         f.close()
 
@@ -367,17 +325,29 @@ class UnifiedPlanningProblem:
                         simulator, self.quality_metric
                     )
                     states = [initial_state]
-                    for ai in plan.actions:
-                        print(f"\taction: {ai}")
-                        state_test = simulator.apply(initial_state, ai)
+                    for act in plan.actions:
+                        print(f"\taction: {act}")
+                        state_test = simulator.apply(initial_state, act)
                         states.append(state_test)
+                        print(
+                            f"\tgen 0 new value: {state_test.get_value(self.pgen_exp[0][0])}"
+                        )
+                        print(
+                            f"\tflow new value: {float(state_test.get_value(self.flows_exp[0][0]).constant_value())}"
+                        )
+                        print(
+                            f"\tcongestion new value: {state_test.get_value(self.congestions_exp[0][0])}"
+                        )
+                        print(
+                            f"\tgen 1 (slack) new value: {state_test.get_value(self.pgen_exp[1][0])}"
+                        )
                         minimize_cost_value = evaluate_quality_metric(
                             simulator,
                             self.quality_metric,
                             minimize_cost_value,
                             initial_state,
-                            ai.action,
-                            ai.actual_parameters,
+                            act.action,
+                            act.actual_parameters,
                             state_test,
                         )
-                        print(f"\tcost: {float(minimize_cost_value)}")
+                        print(f"\tcost: {float(minimize_cost_value)}\n")
