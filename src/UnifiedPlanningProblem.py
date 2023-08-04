@@ -28,11 +28,11 @@ class UnifiedPlanningProblem:
         self.horizon = horizon
         self.ptdf = ptdf
         self.grid_params = grid_params
-        self.nb_gens = 2
+        self.nb_gens = 6
         self.nb_storages = len(grid_params[cfg.STORAGES][cfg.EMAX])
         self.initial_states = initial_states
         self.forecasted_states = forecasted_states
-        self.nb_transmission_lines = 1
+        self.nb_transmission_lines = 18
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
 
@@ -112,13 +112,12 @@ class UnifiedPlanningProblem:
             if (
                 self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][gen_id] == True
                 and self.grid_params[cfg.GENERATORS][cfg.SLACK][gen_id] == False
-                and gen_id != 1
             ):
                 pmax = self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id]
                 pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
                 delta = int(pmax - pmin)
 
-                for i in range(82, 86):
+                for i in range(delta):
                     self.pgen_actions.append(
                         InstantaneousAction(f"prod_target_{gen_id}_{0}_{i}")
                     )
@@ -224,7 +223,7 @@ class UnifiedPlanningProblem:
                         raise ("More than one slack generator!")
                     else:
                         action.add_decrease_effect(
-                            self.pgen[1][0],
+                            self.pgen[self.slack_gens[0]][0],
                             i
                             - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                         )
@@ -272,8 +271,8 @@ class UnifiedPlanningProblem:
                 )
                 problem.set_initial_value(self.update_status[k][t], False)
 
-        problem.set_initial_value(self.flows[0][0], 120)
-        problem.set_initial_value(self.congestions[0][0], True)
+        problem.set_initial_value(self.flows[4][0], 39)
+        problem.set_initial_value(self.congestions[4][0], True)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
@@ -283,7 +282,7 @@ class UnifiedPlanningProblem:
             Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
             for t in range(self.horizon)
-        ]
+        ]  # is it too restrictive?
 
         problem.add_goal(And(goals))
 
@@ -330,16 +329,19 @@ class UnifiedPlanningProblem:
                         state_test = simulator.apply(initial_state, act)
                         states.append(state_test)
                         print(
-                            f"\tgen 0 new value: {state_test.get_value(self.pgen_exp[0][0])}"
+                            f"\tgens new value: {[float(state_test.get_value(self.pgen_exp[g][0]).constant_value()) for g in range(self.nb_gens)]}"
                         )
                         print(
-                            f"\tflow new value: {float(state_test.get_value(self.flows_exp[0][0]).constant_value())}"
+                            f"\tflows new value: {[float(state_test.get_value(self.flows_exp[k][0]).constant_value()) for k in range(self.nb_transmission_lines)]}"
                         )
                         print(
-                            f"\tcongestion new value: {state_test.get_value(self.congestions_exp[0][0])}"
+                            f"\tcongestions new value: {[state_test.get_value(self.congestions_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
                         )
                         print(
-                            f"\tgen 1 (slack) new value: {state_test.get_value(self.pgen_exp[1][0])}"
+                            f"\tupdate status new value: {[state_test.get_value(self.update_status_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
+                        )
+                        print(
+                            f"\tgen slack new value: {float(state_test.get_value(self.pgen_exp[2][0]).constant_value())}"
                         )
                         minimize_cost_value = evaluate_quality_metric(
                             simulator,

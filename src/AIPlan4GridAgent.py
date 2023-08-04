@@ -47,14 +47,17 @@ class AIPlan4GridAgent(BaseAgent):
         power_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
         transfo_lines = self.grid.trafo[[cfg.HV_BUS, cfg.LV_BUS]]
 
-        max_flows = (
+        max_flows = np.array(
             (
-                self.env.backend.lines_or_pu_to_kv
-                * self.env.backend.get_thermal_limit()
-                / 1000
-            )
-            * sqrt(3)
-            * cos(atan(0.4))
+                (
+                    self.env.backend.lines_or_pu_to_kv
+                    * self.env.backend.get_thermal_limit()
+                    / 1000
+                )
+                * sqrt(3)
+                * cos(atan(0.4))
+            ),
+            dtype=float,
         )  # from Ampere to MW
 
         for tl_idx in power_lines.index:
