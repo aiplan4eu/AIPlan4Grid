@@ -29,11 +29,11 @@ class UnifiedPlanningProblem:
         self.tactical_horizon = tactical_horizon
         self.ptdf = ptdf
         self.grid_params = grid_params
-        self.nb_gens = 2
+        self.nb_gens = len(grid_params[cfg.GENERATORS][cfg.PMAX])
         self.nb_storages = len(grid_params[cfg.STORAGES][cfg.EMAX])
         self.initial_states = initial_states
         self.forecasted_states = forecasted_states
-        self.nb_transmission_lines = 1
+        self.nb_transmission_lines = 18
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
 
@@ -131,7 +131,6 @@ class UnifiedPlanningProblem:
             if (
                 self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][gen_id] == True
                 and self.grid_params[cfg.GENERATORS][cfg.SLACK][gen_id] == False
-                and gen_id != 1
             ):
                 pmax = self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id]
                 pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
@@ -243,13 +242,13 @@ class UnifiedPlanningProblem:
                         raise ("More than one slack generator!")
                     else:
                         action.add_decrease_effect(
-                            self.pgen[1][0],
+                            self.pgen[self.slack_gens[-1]][0],
                             i
                             - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                         )
                 # for horizon > 1
                 # TODO
-                return actions_costs
+        return actions_costs
 
     def create_actions(self):
         gen_costs = self.create_gen_actions()
@@ -291,8 +290,8 @@ class UnifiedPlanningProblem:
                 )
                 problem.set_initial_value(self.update_status[k][t], False)
 
-        problem.set_initial_value(self.flows[0][0], 121)
-        problem.set_initial_value(self.congestions[0][0], True)
+        problem.set_initial_value(self.flows[6][0], 75)
+        problem.set_initial_value(self.congestions[6][0], True)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
@@ -309,13 +308,14 @@ class UnifiedPlanningProblem:
         self.problem = problem
 
     def save_problem(self, id: int):
-        os.makedirs(cfg.TMP_DIR, exist_ok=True)
+        save_dir = pjoin(cfg.TMP_DIR, f"problem_{id}")
+        os.makedirs(save_dir, exist_ok=True)
         upp_file = str(id) + "_problem" + cfg.UPP_SUFFIX
         pddl_file = str(id) + "_problem" + cfg.PDDL_SUFFIX
         pddl_domain_file = str(id) + "_problem_domain" + cfg.PDDL_SUFFIX
 
         # upp problem, "upp" stands for unified planning problem
-        with open(pjoin(cfg.TMP_DIR, upp_file), "w") as f:
+        with open(pjoin(save_dir, upp_file), "w") as f:
             f.write(
                 f"number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
@@ -325,8 +325,8 @@ class UnifiedPlanningProblem:
 
         # pddl problem
         pddl_writer = up.io.PDDLWriter(self.problem, True, True)
-        pddl_writer.write_problem(pjoin(cfg.TMP_DIR, pddl_file))
-        pddl_writer.write_domain(pjoin(cfg.TMP_DIR, pddl_domain_file))
+        pddl_writer.write_problem(pjoin(save_dir, pddl_file))
+        pddl_writer.write_domain(pjoin(save_dir, pddl_domain_file))
 
     def solve(self, simulate=False):
         with OneshotPlanner(
