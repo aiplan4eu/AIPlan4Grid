@@ -34,9 +34,9 @@ def parse_ini(ini_file_path: str) -> dict:
     return parameters
 
 
-def _routine(agent: AIPlan4GridAgent):
+def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
-    agent.act()
+    obs, *_ = agent.step(1)
 
 
 def main(args: argparse.Namespace):
@@ -53,11 +53,11 @@ def main(args: argparse.Namespace):
         )
         agent = AIPlan4GridAgent(
             env=env,
-            horizon=parameters[cfg.HORIZON],
+            tactical_horizon=parameters[cfg.HORIZON],
             solver=parameters[cfg.SOLVER],
             verbose=True,
         )
-        _routine(agent)
+        routine(agent)
     except Exception as e:
         print(e)
 

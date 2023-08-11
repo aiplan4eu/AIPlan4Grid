@@ -11,28 +11,29 @@ from unified_planning.engines.sequential_simulator import (
 from unified_planning.shortcuts import *
 
 import config as cfg
-from utils import compute_size_array
+from utils import compute_size_array, verbose_print
 
 
 class UnifiedPlanningProblem:
     def __init__(
         self,
-        horizon: int,
+        tactical_horizon: int,
         ptdf: list[list],
         grid_params: dict,
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
+        verbose: bool,
     ):
         get_environment().credits_stream = None
-        self.horizon = horizon
+        self.tactical_horizon = tactical_horizon
         self.ptdf = ptdf
         self.grid_params = grid_params
-        self.nb_gens = 6
+        self.nb_gens = 2
         self.nb_storages = len(grid_params[cfg.STORAGES][cfg.EMAX])
         self.initial_states = initial_states
         self.forecasted_states = forecasted_states
-        self.nb_transmission_lines = 18
+        self.nb_transmission_lines = 1
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
 
@@ -40,46 +41,61 @@ class UnifiedPlanningProblem:
         self.create_actions()
         self.create_problem()
 
+        global vprint
+        vprint = verbose_print(verbose)
+
     def create_fluents(self):
         # Creating problem 'variables' so called fluents in PDDL
         self.pgen = np.array(
             [
-                [Fluent(f"pgen_{gen_id}_{t}", RealType()) for t in range(self.horizon)]
+                [
+                    Fluent(f"pgen_{gen_id}_{t}", RealType())
+                    for t in range(self.tactical_horizon)
+                ]
                 for gen_id in range(self.nb_gens)
             ]
         )
 
         self.pgen_exp = np.array(
             [
-                [FluentExp(self.pgen[gen_id][t]) for t in range(self.horizon)]
+                [FluentExp(self.pgen[gen_id][t]) for t in range(self.tactical_horizon)]
                 for gen_id in range(self.nb_gens)
             ]
         )
 
         self.congestions = np.array(
             [
-                [Fluent(f"congestion_{k}_{t}", BoolType()) for t in range(self.horizon)]
+                [
+                    Fluent(f"congestion_{k}_{t}", BoolType())
+                    for t in range(self.tactical_horizon)
+                ]
                 for k in range(self.nb_transmission_lines)
             ]
         )
 
         self.congestions_exp = np.array(
             [
-                [FluentExp(self.congestions[k][t]) for t in range(self.horizon)]
+                [
+                    FluentExp(self.congestions[k][t])
+                    for t in range(self.tactical_horizon)
+                ]
                 for k in range(self.nb_transmission_lines)
             ]
         )
 
         self.flows = np.array(
             [
-                [Fluent(f"flow_{k}_{t}", RealType()) for t in range(self.horizon)]
+                [
+                    Fluent(f"flow_{k}_{t}", RealType())
+                    for t in range(self.tactical_horizon)
+                ]
                 for k in range(self.nb_transmission_lines)
             ]
         )
 
         self.flows_exp = np.array(
             [
-                [FluentExp(self.flows[k][t]) for t in range(self.horizon)]
+                [FluentExp(self.flows[k][t]) for t in range(self.tactical_horizon)]
                 for k in range(self.nb_transmission_lines)
             ]
         )
@@ -88,7 +104,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     Fluent(f"update_status_{k}_{t}", BoolType())
-                    for t in range(self.horizon)
+                    for t in range(self.tactical_horizon)
                 ]
                 for k in range(self.nb_transmission_lines)
             ]
@@ -96,7 +112,10 @@ class UnifiedPlanningProblem:
 
         self.update_status_exp = np.array(
             [
-                [FluentExp(self.update_status[k][t]) for t in range(self.horizon)]
+                [
+                    FluentExp(self.update_status[k][t])
+                    for t in range(self.tactical_horizon)
+                ]
                 for k in range(self.nb_transmission_lines)
             ]
         )
@@ -112,6 +131,7 @@ class UnifiedPlanningProblem:
             if (
                 self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][gen_id] == True
                 and self.grid_params[cfg.GENERATORS][cfg.SLACK][gen_id] == False
+                and gen_id != 1
             ):
                 pmax = self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id]
                 pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
@@ -119,7 +139,7 @@ class UnifiedPlanningProblem:
 
                 for i in range(delta):
                     self.pgen_actions.append(
-                        InstantaneousAction(f"prod_target_{gen_id}_{0}_{i}")
+                        InstantaneousAction(f"gen_target_{gen_id}_{0}_{i}")
                     )
                     action = self.pgen_actions[-1]
                     actions_costs[action] = float(
@@ -223,7 +243,7 @@ class UnifiedPlanningProblem:
                         raise ("More than one slack generator!")
                     else:
                         action.add_decrease_effect(
-                            self.pgen[self.slack_gens[0]][0],
+                            self.pgen[1][0],
                             i
                             - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
                         )
@@ -240,11 +260,11 @@ class UnifiedPlanningProblem:
 
         # add fluents
         for gen_id in range(self.nb_gens):
-            for t in range(self.horizon):
+            for t in range(self.tactical_horizon):
                 problem.add_fluent(self.pgen[gen_id][t])
 
         for k in range(self.nb_transmission_lines):
-            for t in range(self.horizon):
+            for t in range(self.tactical_horizon):
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
                 problem.add_fluent(self.update_status[k][t])
@@ -254,14 +274,14 @@ class UnifiedPlanningProblem:
 
         # add initial states
         for gen_id in range(self.nb_gens):
-            for t in range(self.horizon):
+            for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.pgen[gen_id][t],
                     float(self.forecasted_states[cfg.GENERATORS][t][gen_id]),
                 )
 
         for k in range(self.nb_transmission_lines):
-            for t in range(self.horizon):
+            for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.congestions[k][t],
                     bool(self.forecasted_states[cfg.TRANSMISSION_LINES][t][k]),
@@ -271,8 +291,8 @@ class UnifiedPlanningProblem:
                 )
                 problem.set_initial_value(self.update_status[k][t], False)
 
-        problem.set_initial_value(self.flows[4][0], 39)
-        problem.set_initial_value(self.congestions[4][0], True)
+        problem.set_initial_value(self.flows[0][0], 121)
+        problem.set_initial_value(self.congestions[0][0], True)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
@@ -281,18 +301,21 @@ class UnifiedPlanningProblem:
         goals = [
             Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
-            for t in range(self.horizon)
+            for t in range(self.tactical_horizon)
         ]  # is it too restrictive?
 
         problem.add_goal(And(goals))
 
         self.problem = problem
 
-    def save_problem(self):
+    def save_problem(self, id: int):
         os.makedirs(cfg.TMP_DIR, exist_ok=True)
+        upp_file = str(id) + "_problem" + cfg.UPP_SUFFIX
+        pddl_file = str(id) + "_problem" + cfg.PDDL_SUFFIX
+        pddl_domain_file = str(id) + "_problem_domain" + cfg.PDDL_SUFFIX
 
         # upp problem, "upp" stands for unified planning problem
-        with open(pjoin(cfg.TMP_DIR, cfg.UPP_PROBLEM), "w") as f:
+        with open(pjoin(cfg.TMP_DIR, upp_file), "w") as f:
             f.write(
                 f"number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
@@ -301,55 +324,58 @@ class UnifiedPlanningProblem:
         f.close()
 
         # pddl problem
-        up.io.PDDLWriter(self.problem, True, True).write_problem(
-            pjoin(cfg.TMP_DIR, cfg.PDDL_PROBLEM)
-        )
+        pddl_writer = up.io.PDDLWriter(self.problem, True, True)
+        pddl_writer.write_problem(pjoin(cfg.TMP_DIR, pddl_file))
+        pddl_writer.write_domain(pjoin(cfg.TMP_DIR, pddl_domain_file))
 
-    def solve(self):
+    def solve(self, simulate=False):
         with OneshotPlanner(
             name=self.solver,
+            problem_kind=self.problem.kind,
             optimality_guarantee=PlanGenerationResultStatus.SOLVED_OPTIMALLY,
         ) as planner:
             output = planner.solve(self.problem)
             plan = output.plan
             if plan is None:
-                print(output)
-            if plan is not None:
-                print(f"Status: {output.status}")
-                print(f"Plan found: {plan}")
-                print("Simulating plan...")
-                with SequentialSimulator(problem=self.problem) as simulator:
-                    initial_state = simulator.get_initial_state()
-                    minimize_cost_value = evaluate_quality_metric_in_initial_state(
-                        simulator, self.quality_metric
-                    )
-                    states = [initial_state]
-                    for act in plan.actions:
-                        print(f"\taction: {act}")
-                        state_test = simulator.apply(initial_state, act)
-                        states.append(state_test)
-                        print(
-                            f"\tgens new value: {[float(state_test.get_value(self.pgen_exp[g][0]).constant_value()) for g in range(self.nb_gens)]}"
+                vprint(output)
+            else:
+                vprint(f"Status: {output.status}")
+                vprint(f"Plan found: {plan}")
+                vprint("Simulating plan...")
+                if simulate:
+                    with SequentialSimulator(problem=self.problem) as simulator:
+                        initial_state = simulator.get_initial_state()
+                        minimize_cost_value = evaluate_quality_metric_in_initial_state(
+                            simulator, self.quality_metric
                         )
-                        print(
-                            f"\tflows new value: {[float(state_test.get_value(self.flows_exp[k][0]).constant_value()) for k in range(self.nb_transmission_lines)]}"
-                        )
-                        print(
-                            f"\tcongestions new value: {[state_test.get_value(self.congestions_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
-                        )
-                        print(
-                            f"\tupdate status new value: {[state_test.get_value(self.update_status_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
-                        )
-                        print(
-                            f"\tgen slack new value: {float(state_test.get_value(self.pgen_exp[2][0]).constant_value())}"
-                        )
-                        minimize_cost_value = evaluate_quality_metric(
-                            simulator,
-                            self.quality_metric,
-                            minimize_cost_value,
-                            initial_state,
-                            act.action,
-                            act.actual_parameters,
-                            state_test,
-                        )
-                        print(f"\tcost: {float(minimize_cost_value)}\n")
+                        states = [initial_state]
+                        for act in plan.actions:
+                            vprint(f"\taction: {act}")
+                            state_test = simulator.apply(initial_state, act)
+                            states.append(state_test)
+                            vprint(
+                                f"\tgens new value: {[float(state_test.get_value(self.pgen_exp[g][0]).constant_value()) for g in range(self.nb_gens)]}"
+                            )
+                            vprint(
+                                f"\tflows new value: {[float(state_test.get_value(self.flows_exp[k][0]).constant_value()) for k in range(self.nb_transmission_lines)]}"
+                            )
+                            vprint(
+                                f"\tcongestions new value: {[state_test.get_value(self.congestions_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
+                            )
+                            vprint(
+                                f"\tupdate status new value: {[state_test.get_value(self.update_status_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
+                            )
+                            vprint(
+                                f"\tgen slack new value: {float(state_test.get_value(self.pgen_exp[1][0]).constant_value())}"
+                            )
+                            minimize_cost_value = evaluate_quality_metric(
+                                simulator,
+                                self.quality_metric,
+                                minimize_cost_value,
+                                initial_state,
+                                act.action,
+                                act.actual_parameters,
+                                state_test,
+                            )
+                            vprint(f"\tcost: {float(minimize_cost_value)}")
+        return plan.actions

@@ -40,8 +40,11 @@ STATUS = "status"
 MAX_FLOW = "max_flow"
 
 LOADS = "loads"
+
+REDISPATCH = "redispatch"
+SET_STORAGE = "set_storage"
 ###########################################################
 
 TMP_DIR = pjoin(BASE_DIR, "tmp")
-UPP_PROBLEM = "problem.upp"
-PDDL_PROBLEM = "problem.pddl"
+UPP_SUFFIX = ".upp"
+PDDL_SUFFIX = ".pddl"
