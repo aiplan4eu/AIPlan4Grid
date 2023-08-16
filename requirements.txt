@@ -1,0 +1,6 @@
+Grid2Op==1.8.1
+numba==0.56.4
+numpy==1.23.5
+pandapower==2.13.1
+unified-planning==0.6.0
+up-enhsp==0.0.13
