@@ -7,6 +7,15 @@ from AIPlan4GridAgent import AIPlan4GridAgent
 from grid2op.Backend import PandaPowerBackend
 
 import config as cfg
+import shutil
+
+
+def clean_logs():
+    """Remove recursively the log directory if it exists"""
+    try:
+        shutil.rmtree(cfg.LOG_DIR)
+    except FileNotFoundError:
+        pass
 
 
 def fill_parser(parser: argparse.ArgumentParser):
@@ -28,7 +37,7 @@ def parse_ini(ini_file_path: str) -> dict:
     parameters_section = config[cfg.PARAMETERS]
     parameters = {
         cfg.ENV_NAME: parameters_section[cfg.ENV_NAME],
-        cfg.HORIZON: int(parameters_section[cfg.HORIZON]),
+        cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
     }
     return parameters
@@ -36,7 +45,10 @@ def parse_ini(ini_file_path: str) -> dict:
 
 def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
-    obs, *_ = agent.step(1)
+    for i in range(2):
+        print(f"\n* Episode {i+1}:")
+        obs, reward, *_ = agent.step(i)
+        print(f"\tReward: {reward}")
 
 
 def main(args: argparse.Namespace):
@@ -53,10 +65,10 @@ def main(args: argparse.Namespace):
         )
         agent = AIPlan4GridAgent(
             env=env,
-            tactical_horizon=parameters[cfg.HORIZON],
+            tactical_horizon=parameters[cfg.TACTICAL_HORIZON],
             solver=parameters[cfg.SOLVER],
-            verbose=True,
         )
+        clean_logs()
         routine(agent)
     except Exception as e:
         print(e)

@@ -10,7 +10,6 @@ from pandapower.pypower.makePTDF import makePTDF
 
 import config as cfg
 from UnifiedPlanningProblem import UnifiedPlanningProblem
-from utils import verbose_print
 
 
 class AIPlan4GridAgent(BaseAgent):
@@ -81,7 +80,6 @@ class AIPlan4GridAgent(BaseAgent):
         env: Environment,
         tactical_horizon: int,
         solver: str,
-        verbose: bool,
     ):
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
             raise RuntimeError(
@@ -102,10 +100,6 @@ class AIPlan4GridAgent(BaseAgent):
         self.grid_params = self._get_grid_params()
         self.curr_obs = self.env.reset()
         self.solver = solver
-
-        self._VERBOSE = verbose
-        global vprint
-        vprint = verbose_print(self._VERBOSE)
 
     def display_grid(self):
         import matplotlib.pyplot as plt
@@ -208,7 +202,7 @@ class AIPlan4GridAgent(BaseAgent):
     def act(self, step: int):
         self.ptdf = self.get_ptdf()
         self.update_states()
-        vprint("Creating UP problem...")
+        print("\tCreating UP problem...")
         upp = UnifiedPlanningProblem(
             self.tactical_horizon,
             self.ptdf,
@@ -216,19 +210,20 @@ class AIPlan4GridAgent(BaseAgent):
             self.initial_states,
             self.forecasted_states,
             self.solver,
-            self._VERBOSE,
+            id=step,
         )
-        vprint(f"Saving UP problem in {cfg.TMP_DIR}")
-        upp.save_problem(step)
-        vprint("Solving UP problem...")
+        print(f"\tSaving UP problem in {cfg.LOG_DIR}")
+        upp.save_problem()
+        print("\tSolving UP problem...")
         start = timer()
         up_plan = upp.solve(simulate=True)
         end = timer()
-        vprint(f"Problem solved in {end - start} seconds")
+        print(f"\tProblem solved in {end - start} seconds")
         g2op_actions = self.up_actions_to_g2op_actions(up_plan)
         return self.env.action_space(g2op_actions)
 
     def step(self, step: int):
         observation, reward, done, info = self.env.step(self.act(step))
         self.curr_obs = observation
+        self.done = done
         return observation, reward, done, info

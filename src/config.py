@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_INI_FILE = "parameters.ini"
 PARAMETERS = "Parameters"
 ENV_NAME = "env_name"
-HORIZON = "horizon"
+TACTICAL_HORIZON = "tactical_horizon"
 SOLVER = "solver"
 
 # DO NOT CHANGE THE FOLLOWING STRINGS (USED BY THE BACKEND)
@@ -45,9 +45,12 @@ REDISPATCH = "redispatch"
 SET_STORAGE = "set_storage"
 ###########################################################
 
-TMP_DIR = pjoin(BASE_DIR, "tmp")
+LOG_DIR = pjoin(BASE_DIR, "log")
 UPP_SUFFIX = ".upp"
 PDDL_SUFFIX = ".pddl"
+LOG_SUFFIX = ".log"
+OUT_FILE = "out.log"
+ERR_FILE = "err.log"
 
 GENERATOR_ACTION_PREFIX = "gen"
 STORAGE_ACTION_PREFIX = "sto"

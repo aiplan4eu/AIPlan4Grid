@@ -11,7 +11,7 @@ from unified_planning.engines.sequential_simulator import (
 from unified_planning.shortcuts import *
 
 import config as cfg
-from utils import compute_size_array, verbose_print
+from utils import compute_size_array, setup_logger
 
 
 class UnifiedPlanningProblem:
@@ -23,9 +23,10 @@ class UnifiedPlanningProblem:
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
-        verbose: bool,
+        id: int,
     ):
         get_environment().credits_stream = None
+
         self.tactical_horizon = tactical_horizon
         self.ptdf = ptdf
         self.grid_params = grid_params
@@ -36,14 +37,21 @@ class UnifiedPlanningProblem:
         self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
-        self.precision = 6
+        self.id = id
+
+        self.float_precision = 6
+
+        self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        self.logger = setup_logger(
+            f"{__name__}_{self.id}",
+            self.log_dir,
+        )
 
         self.create_fluents()
         self.create_actions()
         self.create_problem()
-
-        global vprint
-        vprint = verbose_print(verbose)
 
     def create_fluents(self):
         # Creating problem 'variables' so called fluents in PDDL
@@ -289,7 +297,10 @@ class UnifiedPlanningProblem:
                 problem.set_initial_value(
                     self.flows[k][t],
                     float(
-                        round(self.forecasted_states[cfg.FLOWS][t][k], self.precision)
+                        round(
+                            self.forecasted_states[cfg.FLOWS][t][k],
+                            self.float_precision,
+                        )
                     ),
                 )
                 problem.set_initial_value(self.update_status[k][t], False)
@@ -308,15 +319,13 @@ class UnifiedPlanningProblem:
 
         self.problem = problem
 
-    def save_problem(self, id: int):
-        save_dir = pjoin(cfg.TMP_DIR, f"problem_{id}")
-        os.makedirs(save_dir, exist_ok=True)
-        upp_file = str(id) + "_problem" + cfg.UPP_SUFFIX
-        pddl_file = str(id) + "_problem" + cfg.PDDL_SUFFIX
-        pddl_domain_file = str(id) + "_problem_domain" + cfg.PDDL_SUFFIX
+    def save_problem(self):
+        upp_file = "problem_" + str(self.id) + cfg.UPP_SUFFIX
+        pddl_file = "problem_" + str(self.id) + cfg.PDDL_SUFFIX
+        pddl_domain_file = "problem_domain_" + str(self.id) + cfg.PDDL_SUFFIX
 
         # upp problem, "upp" stands for unified planning problem
-        with open(pjoin(save_dir, upp_file), "w") as f:
+        with open(pjoin(self.log_dir, upp_file), "w") as f:
             f.write(
                 f"number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
@@ -326,8 +335,8 @@ class UnifiedPlanningProblem:
 
         # pddl problem
         pddl_writer = up.io.PDDLWriter(self.problem, True, True)
-        pddl_writer.write_problem(pjoin(save_dir, pddl_file))
-        pddl_writer.write_domain(pjoin(save_dir, pddl_domain_file))
+        pddl_writer.write_problem(pjoin(self.log_dir, pddl_file))
+        pddl_writer.write_domain(pjoin(self.log_dir, pddl_domain_file))
 
     def solve(self, simulate=False):
         with OneshotPlanner(
@@ -338,12 +347,12 @@ class UnifiedPlanningProblem:
             output = planner.solve(self.problem)
             plan = output.plan
             if plan is None:
-                vprint(output)
+                self.logger.info(output)
             else:
-                vprint(f"Status: {output.status}")
-                vprint(f"Plan found: {plan}")
-                vprint("Simulating plan...")
+                self.logger.info(f"Status: {output.status}")
+                self.logger.info(f"Plan found: {plan}")
                 if simulate:
+                    self.logger.debug("Simulating plan:")
                     with SequentialSimulator(problem=self.problem) as simulator:
                         initial_state = simulator.get_initial_state()
                         minimize_cost_value = evaluate_quality_metric_in_initial_state(
@@ -351,22 +360,22 @@ class UnifiedPlanningProblem:
                         )
                         states = [initial_state]
                         for act in plan.actions:
-                            vprint(f"\taction: {act}")
+                            self.logger.debug(f"\taction: {act}")
                             state_test = simulator.apply(initial_state, act)
                             states.append(state_test)
-                            vprint(
+                            self.logger.debug(
                                 f"\tgens new value: {[float(state_test.get_value(self.pgen_exp[g][0]).constant_value()) for g in range(self.nb_gens)]}"
                             )
-                            vprint(
+                            self.logger.debug(
                                 f"\tflows new value: {[float(state_test.get_value(self.flows_exp[k][0]).constant_value()) for k in range(self.nb_transmission_lines)]}"
                             )
-                            vprint(
+                            self.logger.debug(
                                 f"\tcongestions new value: {[state_test.get_value(self.congestions_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
                             )
-                            vprint(
+                            self.logger.debug(
                                 f"\tupdate status new value: {[state_test.get_value(self.update_status_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
                             )
-                            vprint(
+                            self.logger.debug(
                                 f"\tgen slack new value: {float(state_test.get_value(self.pgen_exp[1][0]).constant_value())}"
                             )
                             minimize_cost_value = evaluate_quality_metric(
@@ -378,5 +387,5 @@ class UnifiedPlanningProblem:
                                 act.actual_parameters,
                                 state_test,
                             )
-                            vprint(f"\tcost: {float(minimize_cost_value)}")
+                            self.logger.debug(f"\tcost: {float(minimize_cost_value)}")
         return plan.actions
