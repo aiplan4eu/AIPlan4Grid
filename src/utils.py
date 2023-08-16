@@ -29,7 +29,7 @@ def setup_logger(name, log_dir, level=0):
     """To setup as many loggers as you want"""
     logging.basicConfig(
         filename=pjoin(log_dir, cfg.OUT_FILE),
-        format="| %(levelname)s | %(asctime)s | %(message)s",
+        format="| %(levelname)-6s| %(asctime)s | %(message)s",
         datefmt="%I:%M",
         level=level,
         force=True,

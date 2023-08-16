@@ -352,7 +352,7 @@ class UnifiedPlanningProblem:
                 self.logger.info(f"Status: {output.status}")
                 self.logger.info(f"Plan found: {plan}")
                 if simulate:
-                    self.logger.debug("Simulating plan:")
+                    self.logger.debug("Simulating plan...")
                     with SequentialSimulator(problem=self.problem) as simulator:
                         initial_state = simulator.get_initial_state()
                         minimize_cost_value = evaluate_quality_metric_in_initial_state(
