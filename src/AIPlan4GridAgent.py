@@ -181,9 +181,9 @@ class AIPlan4GridAgent(BaseAgent):
             value = float(action_info[4])
 
             # we get the current value of the generator or the storage
-            if action_type == "gen":
+            if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 current_value = self.curr_obs.gen_p[id]
-            elif action_type == "sto":
+            elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 current_value = self.curr_obs.storage_charge[id]
             else:
                 raise RuntimeError(
@@ -194,9 +194,9 @@ class AIPlan4GridAgent(BaseAgent):
             action_value = value - current_value
 
             # we add the action to the dict
-            if action_type == "gen":
+            if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[cfg.REDISPATCH].append((id, action_value))
-            elif action_type == "sto":
+            elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[cfg.SET_STORAGE].append((id, action_value))
             else:
                 raise RuntimeError(

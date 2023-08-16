@@ -48,3 +48,6 @@ SET_STORAGE = "set_storage"
 TMP_DIR = pjoin(BASE_DIR, "tmp")
 UPP_SUFFIX = ".upp"
 PDDL_SUFFIX = ".pddl"
+
+GENERATOR_ACTION_PREFIX = "gen"
+STORAGE_ACTION_PREFIX = "sto"
