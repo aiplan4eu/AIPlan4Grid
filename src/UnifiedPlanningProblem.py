@@ -192,11 +192,20 @@ class UnifiedPlanningProblem:
                     for k in range(self.nb_transmission_lines):
                         action.add_precondition(Iff(self.update_status[k][0], False))
                         diff = float(
-                            self.ptdf[k][
-                                self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]
-                            ]
-                        ) * (
-                            i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id])
+                            round(
+                                self.ptdf[k][
+                                    self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]
+                                ]
+                                * (
+                                    i
+                                    - float(
+                                        self.forecasted_states[cfg.GENERATORS][0][
+                                            gen_id
+                                        ]
+                                    )
+                                ),
+                                self.float_precision,
+                            )
                         )
                         action.add_increase_effect(
                             self.flows[k][0],
@@ -351,7 +360,7 @@ class UnifiedPlanningProblem:
             else:
                 self.logger.info(f"Status: {output.status}")
                 self.logger.info(f"Plan found: {plan}")
-                if simulate:
+                if simulate and len(plan.actions) > 0:
                     self.logger.debug("Simulating plan...")
                     with SequentialSimulator(problem=self.problem) as simulator:
                         initial_state = simulator.get_initial_state()
@@ -388,4 +397,4 @@ class UnifiedPlanningProblem:
                                 state_test,
                             )
                             self.logger.debug(f"\tcost: {float(minimize_cost_value)}")
-        return plan.actions
+                return plan.actions
