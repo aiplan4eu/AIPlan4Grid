@@ -35,7 +35,7 @@ def setup_logger(name, log_dir, level=0):
         force=True,
     )
 
-    sys.stderr.write = open(pjoin(log_dir, cfg.ERR_FILE), "w").write
+    sys.stderr.write = open(pjoin(log_dir, cfg.WARN_FILE), "w").write
 
     logger = logging.getLogger(name)
 

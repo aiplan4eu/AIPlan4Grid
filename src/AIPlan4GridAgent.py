@@ -97,6 +97,7 @@ class AIPlan4GridAgent:
             )
 
         self.env = env
+        self.env.set_id(2)
         self.operational_horizon = operational_horizon
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
@@ -229,6 +230,8 @@ class AIPlan4GridAgent:
         up_plan = upp.solve(simulate=True)
         end = timer()
         print(f"\tProblem solved in {end - start} seconds")
+        if len(up_plan) == 0:
+            return self.env.action_space({})
         g2op_actions = self.up_actions_to_g2op_actions(up_plan)
         return self.env.action_space(g2op_actions)
 

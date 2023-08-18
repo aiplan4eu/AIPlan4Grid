@@ -47,7 +47,6 @@ def parse_ini(ini_file_path: str) -> dict:
 
 def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
-    agent.env.set_id(2)  # the one where congestion is more likely to happen
     for i in range(STRATEGIC_HORIZON):
         print(f"\n* Episode {i+1}:")
         obs, reward, *_ = agent.progress(i)

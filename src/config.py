@@ -52,7 +52,7 @@ UPP_SUFFIX = ".upp"
 PDDL_SUFFIX = ".pddl"
 LOG_SUFFIX = ".log"
 OUT_FILE = "out.log"
-ERR_FILE = "err.log"
+WARN_FILE = "warning.log"
 
 GENERATOR_ACTION_PREFIX = "gen"
 STORAGE_ACTION_PREFIX = "sto"

@@ -114,22 +114,13 @@ class UnifiedPlanningProblem:
 
         self.update_status = np.array(
             [
-                [
-                    Fluent(f"update_status_{k}_{t}", BoolType())
-                    for t in range(self.operational_horizon)
-                ]
-                for k in range(self.nb_transmission_lines)
+                Fluent(f"update_status_{t}", BoolType())
+                for t in range(self.operational_horizon)
             ]
         )
 
         self.update_status_exp = np.array(
-            [
-                [
-                    FluentExp(self.update_status[k][t])
-                    for t in range(self.operational_horizon)
-                ]
-                for k in range(self.nb_transmission_lines)
-            ]
+            [FluentExp(self.update_status[t]) for t in range(self.operational_horizon)]
         )
 
     def create_gen_actions(self) -> dict:
@@ -144,11 +135,10 @@ class UnifiedPlanningProblem:
                 self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][gen_id] == True
                 and self.grid_params[cfg.GENERATORS][cfg.SLACK][gen_id] == False
             ):
-                pmax = self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id]
-                pmin = self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id]
-                delta = int(pmax - pmin)
+                pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
+                pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
 
-                for i in range(delta):
+                for i in range(pmin, pmax + 1):
                     self.pgen_actions.append(
                         InstantaneousAction(f"gen_target_{gen_id}_{0}_{i}")
                     )
@@ -179,21 +169,21 @@ class UnifiedPlanningProblem:
                                 self.pgen[gen_id][0],
                                 float(
                                     self.forecasted_states[cfg.GENERATORS][0][gen_id]
-                                    - 10e-3
+                                    - self.float_precision
                                 ),
                             ),
                             LE(
                                 self.pgen[gen_id][0],
                                 float(
                                     self.forecasted_states[cfg.GENERATORS][0][gen_id]
-                                    + 10e-3
+                                    + self.float_precision
                                 ),
                             ),
                         )
                     )
                     action.add_effect(self.pgen[gen_id][0], i)
+                    action.add_precondition(Iff(self.update_status[0], False))
                     for k in range(self.nb_transmission_lines):
-                        action.add_precondition(Iff(self.update_status[k][0], False))
                         diff = float(
                             round(
                                 self.ptdf[k][
@@ -258,7 +248,7 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                         )
-                        action.add_effect(self.update_status[k][0], True)
+                        action.add_effect(self.update_status[0], True)
                     if len(self.slack_gens) > 1:
                         raise ("More than one slack generator!")
                     else:
@@ -287,7 +277,9 @@ class UnifiedPlanningProblem:
             for t in range(self.operational_horizon):
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
-                problem.add_fluent(self.update_status[k][t])
+
+        for t in range(self.operational_horizon):
+            problem.add_fluent(self.update_status[t])
 
         # add actions
         problem.add_actions(self.pgen_actions)
@@ -315,7 +307,9 @@ class UnifiedPlanningProblem:
                         )
                     ),
                 )
-                problem.set_initial_value(self.update_status[k][t], False)
+
+        for t in range(self.operational_horizon):
+            problem.set_initial_value(self.update_status[t], False)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
@@ -339,7 +333,7 @@ class UnifiedPlanningProblem:
         # upp problem, "upp" stands for unified planning problem
         with open(pjoin(self.log_dir, upp_file), "w") as f:
             f.write(
-                f"number of fluents: {compute_size_array(self.pgen)  + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
+                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.congestions) + compute_size_array(self.flows) + compute_size_array(self.update_status)}\n"
             )
             f.write(f"number of actions: {len(self.pgen_actions)}\n")
             f.write(self.problem.__str__())
@@ -359,7 +353,8 @@ class UnifiedPlanningProblem:
             output = planner.solve(self.problem)
             plan = output.plan
             if plan is None:
-                self.logger.info(output)
+                self.logger.error(output)
+                raise Exception("\tNo plan found!")
             else:
                 self.logger.info(f"Status: {output.status}")
                 self.logger.info(f"Plan found: {plan}")
@@ -376,19 +371,19 @@ class UnifiedPlanningProblem:
                             state_test = simulator.apply(initial_state, act)
                             states.append(state_test)
                             self.logger.debug(
-                                f"\tgens new value: {[float(state_test.get_value(self.pgen_exp[g][0]).constant_value()) for g in range(self.nb_gens)]}"
+                                f"\tgens new value: {[[float(state_test.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tflows new value: {[float(state_test.get_value(self.flows_exp[k][0]).constant_value()) for k in range(self.nb_transmission_lines)]}"
+                                f"\tflows new value: {[[float(state_test.get_value(self.flows_exp[k][t]).constant_value()) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tcongestions new value: {[state_test.get_value(self.congestions_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
+                                f"\tcongestions new value: {[[state_test.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tupdate status new value: {[state_test.get_value(self.update_status_exp[k][0]) for k in range(self.nb_transmission_lines)]}"
+                                f"\tupdate status new value: {[state_test.get_value(self.update_status_exp[t]) for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tgen slack new value: {float(state_test.get_value(self.pgen_exp[1][0]).constant_value())}"
+                                f"\tgen slack new value: {[float(state_test.get_value(self.pgen_exp[self.slack_gens[0]][t]).constant_value()) for t in range(self.operational_horizon)]}"
                             )
                             minimize_cost_value = evaluate_quality_metric(
                                 simulator,
