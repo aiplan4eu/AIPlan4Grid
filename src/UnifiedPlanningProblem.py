@@ -17,7 +17,7 @@ from utils import compute_size_array, setup_logger
 class UnifiedPlanningProblem:
     def __init__(
         self,
-        tactical_horizon: int,
+        operational_horizon: int,
         ptdf: list[list],
         grid_params: dict,
         initial_states: dict,
@@ -27,7 +27,7 @@ class UnifiedPlanningProblem:
     ):
         get_environment().credits_stream = None
 
-        self.tactical_horizon = tactical_horizon
+        self.operational_horizon = operational_horizon
         self.ptdf = ptdf
         self.grid_params = grid_params
         self.nb_gens = len(grid_params[cfg.GENERATORS][cfg.PMAX])
@@ -59,7 +59,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     Fluent(f"pgen_{gen_id}_{t}", RealType())
-                    for t in range(self.tactical_horizon)
+                    for t in range(self.operational_horizon)
                 ]
                 for gen_id in range(self.nb_gens)
             ]
@@ -67,7 +67,10 @@ class UnifiedPlanningProblem:
 
         self.pgen_exp = np.array(
             [
-                [FluentExp(self.pgen[gen_id][t]) for t in range(self.tactical_horizon)]
+                [
+                    FluentExp(self.pgen[gen_id][t])
+                    for t in range(self.operational_horizon)
+                ]
                 for gen_id in range(self.nb_gens)
             ]
         )
@@ -76,7 +79,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     Fluent(f"congestion_{k}_{t}", BoolType())
-                    for t in range(self.tactical_horizon)
+                    for t in range(self.operational_horizon)
                 ]
                 for k in range(self.nb_transmission_lines)
             ]
@@ -86,7 +89,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     FluentExp(self.congestions[k][t])
-                    for t in range(self.tactical_horizon)
+                    for t in range(self.operational_horizon)
                 ]
                 for k in range(self.nb_transmission_lines)
             ]
@@ -96,7 +99,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     Fluent(f"flow_{k}_{t}", RealType())
-                    for t in range(self.tactical_horizon)
+                    for t in range(self.operational_horizon)
                 ]
                 for k in range(self.nb_transmission_lines)
             ]
@@ -104,7 +107,7 @@ class UnifiedPlanningProblem:
 
         self.flows_exp = np.array(
             [
-                [FluentExp(self.flows[k][t]) for t in range(self.tactical_horizon)]
+                [FluentExp(self.flows[k][t]) for t in range(self.operational_horizon)]
                 for k in range(self.nb_transmission_lines)
             ]
         )
@@ -113,7 +116,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     Fluent(f"update_status_{k}_{t}", BoolType())
-                    for t in range(self.tactical_horizon)
+                    for t in range(self.operational_horizon)
                 ]
                 for k in range(self.nb_transmission_lines)
             ]
@@ -123,7 +126,7 @@ class UnifiedPlanningProblem:
             [
                 [
                     FluentExp(self.update_status[k][t])
-                    for t in range(self.tactical_horizon)
+                    for t in range(self.operational_horizon)
                 ]
                 for k in range(self.nb_transmission_lines)
             ]
@@ -277,11 +280,11 @@ class UnifiedPlanningProblem:
 
         # add fluents
         for gen_id in range(self.nb_gens):
-            for t in range(self.tactical_horizon):
+            for t in range(self.operational_horizon):
                 problem.add_fluent(self.pgen[gen_id][t])
 
         for k in range(self.nb_transmission_lines):
-            for t in range(self.tactical_horizon):
+            for t in range(self.operational_horizon):
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
                 problem.add_fluent(self.update_status[k][t])
@@ -291,14 +294,14 @@ class UnifiedPlanningProblem:
 
         # add initial states
         for gen_id in range(self.nb_gens):
-            for t in range(self.tactical_horizon):
+            for t in range(self.operational_horizon):
                 problem.set_initial_value(
                     self.pgen[gen_id][t],
                     float(self.forecasted_states[cfg.GENERATORS][t][gen_id]),
                 )
 
         for k in range(self.nb_transmission_lines):
-            for t in range(self.tactical_horizon):
+            for t in range(self.operational_horizon):
                 problem.set_initial_value(
                     self.congestions[k][t],
                     bool(self.forecasted_states[cfg.TRANSMISSION_LINES][t][k]),
@@ -321,7 +324,7 @@ class UnifiedPlanningProblem:
         goals = [
             Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
-            for t in range(self.tactical_horizon)
+            for t in range(self.operational_horizon)
         ]  # is it too restrictive?
 
         problem.add_goal(And(goals))

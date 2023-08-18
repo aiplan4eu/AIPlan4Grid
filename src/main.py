@@ -23,7 +23,7 @@ def fill_parser(parser: argparse.ArgumentParser):
     parser.add_argument(
         "-c",
         "--config-file",
-        help="Configuration file path",
+        help="Configuration file path. If not given, the default configuration file will be used.",
         default=None,
         required=False,
     )
@@ -37,7 +37,9 @@ def parse_ini(ini_file_path: str) -> dict:
     parameters_section = config[cfg.PARAMETERS]
     parameters = {
         cfg.ENV_NAME: parameters_section[cfg.ENV_NAME],
+        cfg.OPERATIONAL_HORIZON: int(parameters_section[cfg.OPERATIONAL_HORIZON]),
         cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
+        cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
     }
     return parameters
@@ -45,9 +47,10 @@ def parse_ini(ini_file_path: str) -> dict:
 
 def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
-    for i in range(2):
+    agent.env.set_id(2)  # the one where congestion is more likely to happen
+    for i in range(STRATEGIC_HORIZON):
         print(f"\n* Episode {i+1}:")
-        obs, reward, *_ = agent.step(i)
+        obs, reward, *_ = agent.progress(i)
         print(f"\tReward: {reward}")
 
 
@@ -58,6 +61,8 @@ def main(args: argparse.Namespace):
             parameters = parse_ini(ini_file_path)
         else:
             parameters = parse_ini(args.config_file)
+        global STRATEGIC_HORIZON
+        STRATEGIC_HORIZON = parameters[cfg.STRATEGIC_HORIZON]
         env = grid2op.make(
             dataset=parameters[cfg.ENV_NAME],
             test=True,
@@ -65,7 +70,7 @@ def main(args: argparse.Namespace):
         )
         agent = AIPlan4GridAgent(
             env=env,
-            tactical_horizon=parameters[cfg.TACTICAL_HORIZON],
+            operational_horizon=parameters[cfg.OPERATIONAL_HORIZON],
             solver=parameters[cfg.SOLVER],
         )
         clean_logs()

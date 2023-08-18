@@ -2,9 +2,7 @@ from math import atan, cos, sqrt
 from timeit import default_timer as timer
 
 import numpy as np
-from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
-from grid2op.Observation import BaseObservation
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
@@ -12,7 +10,7 @@ import config as cfg
 from UnifiedPlanningProblem import UnifiedPlanningProblem
 
 
-class AIPlan4GridAgent(BaseAgent):
+class AIPlan4GridAgent:
     def _get_grid_params(self):
         grid_params = {cfg.GENERATORS: {}, cfg.STORAGES: {}, cfg.TRANSMISSION_LINES: {}}
 
@@ -75,10 +73,16 @@ class AIPlan4GridAgent(BaseAgent):
 
         return grid_params
 
+    def get_ptdf(self):
+        net = self.grid
+        _, ppci = _pd2ppc(net)
+        ptdf = makePTDF(ppci["baseMVA"], ppci[cfg.BUS], ppci["branch"])
+        return ptdf
+
     def __init__(
         self,
         env: Environment,
-        tactical_horizon: int,
+        operational_horizon: int,
         solver: str,
     ):
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
@@ -92,12 +96,11 @@ class AIPlan4GridAgent(BaseAgent):
                 "redispatching. It requires at least to be able to do redispatching."
             )
 
-        super().__init__(env.action_space)
         self.env = env
-        self.env.set_id(0)
-        self.tactical_horizon = tactical_horizon
+        self.operational_horizon = operational_horizon
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
+        self.ptdf = self.get_ptdf()
         self.curr_obs = self.env.reset()
         self.solver = solver
 
@@ -110,51 +113,59 @@ class AIPlan4GridAgent(BaseAgent):
         plot_helper.plot_obs(obs)
         plt.show()
 
-    def get_states(self, observation: BaseObservation):
-        base_obs = observation
-        dn_act = self.env.action_space({})
+    def get_states(self):
+        do_nothing_action = self.env.action_space({})
 
-        sim_obs = [base_obs.simulate(dn_act)[0]]
-        for _ in range(self.tactical_horizon - 1):
-            obs, *_ = sim_obs[-1].simulate(dn_act)
-            sim_obs.append(obs)
+        simulated_observations = [self.curr_obs.simulate(do_nothing_action)[0]]
+        for _ in range(self.operational_horizon - 1):
+            obs, *_ = simulated_observations[-1].simulate(do_nothing_action)
+            simulated_observations.append(obs)
 
         forecasted_states = {
             cfg.GENERATORS: np.array(
-                [sim_obs[t].gen_p for t in range(self.tactical_horizon)]
+                [
+                    simulated_observations[t].gen_p
+                    for t in range(self.operational_horizon)
+                ]
             ),
             cfg.LOADS: np.array(
-                [sim_obs[t].load_p for t in range(self.tactical_horizon)]
+                [
+                    simulated_observations[t].load_p
+                    for t in range(self.operational_horizon)
+                ]
             ),
             cfg.STORAGES: np.array(
-                [sim_obs[t].storage_charge for t in range(self.tactical_horizon)]
+                [
+                    simulated_observations[t].storage_charge
+                    for t in range(self.operational_horizon)
+                ]
             ),
             cfg.FLOWS: np.array(
-                [sim_obs[t].p_or for t in range(self.tactical_horizon)]
+                [
+                    simulated_observations[t].p_or
+                    for t in range(self.operational_horizon)
+                ]
             ),
             cfg.TRANSMISSION_LINES: np.array(
-                [sim_obs[t].rho >= 1 for t in range(self.tactical_horizon)]
+                [
+                    simulated_observations[t].rho >= 1
+                    for t in range(self.operational_horizon)
+                ]
             ),
         }
 
         initial_states = {
-            cfg.GENERATORS: base_obs.gen_p,
-            cfg.LOADS: base_obs.load_p,
-            cfg.STORAGES: base_obs.storage_charge,
-            cfg.FLOWS: base_obs.p_or,
-            cfg.TRANSMISSION_LINES: base_obs.rho >= 1,
+            cfg.GENERATORS: self.curr_obs.gen_p,
+            cfg.LOADS: self.curr_obs.load_p,
+            cfg.STORAGES: self.curr_obs.storage_charge,
+            cfg.FLOWS: self.curr_obs.p_or,
+            cfg.TRANSMISSION_LINES: self.curr_obs.rho >= 1,
         }
 
         return initial_states, forecasted_states
 
     def update_states(self):
-        self.initial_states, self.forecasted_states = self.get_states(self.curr_obs)
-
-    def get_ptdf(self):
-        net = self.grid
-        _, ppci = _pd2ppc(net)
-        ptdf = makePTDF(ppci["baseMVA"], ppci[cfg.BUS], ppci["branch"])
-        return ptdf
+        self.initial_states, self.forecasted_states = self.get_states()
 
     def up_actions_to_g2op_actions(self, up_actions):
         # first we create the dict that will be returned
@@ -199,12 +210,11 @@ class AIPlan4GridAgent(BaseAgent):
 
         return g2op_actions
 
-    def act(self, step: int):
-        self.ptdf = self.get_ptdf()
+    def get_actions(self, step: int):
         self.update_states()
         print("\tCreating UP problem...")
         upp = UnifiedPlanningProblem(
-            self.tactical_horizon,
+            self.operational_horizon,
             self.ptdf,
             self.grid_params,
             self.initial_states,
@@ -222,8 +232,9 @@ class AIPlan4GridAgent(BaseAgent):
         g2op_actions = self.up_actions_to_g2op_actions(up_plan)
         return self.env.action_space(g2op_actions)
 
-    def step(self, step: int):
-        observation, reward, done, info = self.env.step(self.act(step))
+    def progress(self, step: int):
+        actions = self.get_actions(step)
+        observation, reward, done, info = self.env.step(actions)
         self.curr_obs = observation
         self.done = done
         return observation, reward, done, info
