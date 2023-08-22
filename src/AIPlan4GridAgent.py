@@ -46,7 +46,7 @@ class AIPlan4GridAgent:
                     * self.env.backend.get_thermal_limit()
                     / 1000
                 )
-                * sqrt(3)
+                * sqrt(3)  # triple phase
                 * cos(atan(0.4))
             ),
             dtype=float,
@@ -82,8 +82,10 @@ class AIPlan4GridAgent:
     def __init__(
         self,
         env: Environment,
+        id: int,
         operational_horizon: int,
         solver: str,
+        debug: bool = False,
     ):
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
             raise RuntimeError(
@@ -97,13 +99,14 @@ class AIPlan4GridAgent:
             )
 
         self.env = env
-        self.env.set_id(2)
+        self.env.set_id(id)
         self.operational_horizon = operational_horizon
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
         self.ptdf = self.get_ptdf()
         self.curr_obs = self.env.reset()
         self.solver = solver
+        self.debug = debug
 
     def display_grid(self):
         import matplotlib.pyplot as plt
@@ -165,6 +168,9 @@ class AIPlan4GridAgent:
 
         return initial_states, forecasted_states
 
+    def check_congestions(self):
+        return np.any(self.curr_obs.rho >= 1)
+
     def update_states(self):
         self.initial_states, self.forecasted_states = self.get_states()
 
@@ -175,6 +181,8 @@ class AIPlan4GridAgent:
         # then we parse the up actions
         for action in up_actions:
             action = action.action.name
+            if action.startswith("update"):
+                continue
             # we split the string to extract the information
             action_info = action.split("_")
             # we get the type of the action
@@ -213,6 +221,9 @@ class AIPlan4GridAgent:
 
     def get_actions(self, step: int):
         self.update_states()
+        # if self.check_congestions() == False:
+        #     print("\tNo congestion detected, no need to solve UP problem")
+        #     return self.env.action_space({})
         print("\tCreating UP problem...")
         upp = UnifiedPlanningProblem(
             self.operational_horizon,
@@ -227,11 +238,9 @@ class AIPlan4GridAgent:
         upp.save_problem()
         print("\tSolving UP problem...")
         start = timer()
-        up_plan = upp.solve(simulate=True)
+        up_plan = upp.solve(simulate=self.debug)
         end = timer()
         print(f"\tProblem solved in {end - start} seconds")
-        if len(up_plan) == 0:
-            return self.env.action_space({})
         g2op_actions = self.up_actions_to_g2op_actions(up_plan)
         return self.env.action_space(g2op_actions)
 
