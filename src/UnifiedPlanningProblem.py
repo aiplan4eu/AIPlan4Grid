@@ -313,9 +313,6 @@ class UnifiedPlanningProblem:
         for t in range(self.operational_horizon):
             problem.set_initial_value(self.update_status[t], False)
 
-        problem.set_initial_value(self.congestions[17][0], True)
-        problem.set_initial_value(self.flows[17][0], 42)
-
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
         problem.add_quality_metric(self.quality_metric)
@@ -332,7 +329,9 @@ class UnifiedPlanningProblem:
 
         goals = goal_1 + goal_2
 
-        problem.add_goal(And(goal_1))
+        problem.add_goal(
+            And(goal_1)
+        )  # TODO: finish the implementation of the update_status actions
 
         self.problem = problem
 

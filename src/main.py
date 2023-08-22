@@ -41,7 +41,7 @@ def parse_ini(ini_file_path: str) -> dict:
         cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
-        cfg.SCENARIO: parameters_section[cfg.SCENARIO],
+        cfg.SCENARIO: int(parameters_section[cfg.SCENARIO]),
     }
     return parameters
 
