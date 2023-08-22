@@ -23,7 +23,7 @@ class UnifiedPlanningProblem:
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
-        id: int,
+        problem_id: int,
     ):
         get_environment().credits_stream = None
 
@@ -37,7 +37,7 @@ class UnifiedPlanningProblem:
         self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
-        self.id = id
+        self.id = problem_id
 
         self.float_precision = 6
 
@@ -313,8 +313,8 @@ class UnifiedPlanningProblem:
         for t in range(self.operational_horizon):
             problem.set_initial_value(self.update_status[t], False)
 
-        # problem.set_initial_value(self.congestions[0][0], True)
-        # problem.set_initial_value(self.flows[0][0], 120.6)
+        problem.set_initial_value(self.congestions[17][0], True)
+        problem.set_initial_value(self.flows[17][0], 42)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)

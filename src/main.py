@@ -41,13 +41,14 @@ def parse_ini(ini_file_path: str) -> dict:
         cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
+        cfg.SCENARIO: parameters_section[cfg.SCENARIO],
     }
     return parameters
 
 
 def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
-    for i in range(1):
+    for i in range(STRATEGIC_HORIZON):
         print(f"\n* Episode {i}:")
         obs, reward, *_ = agent.progress(i)
         print(f"\tReward: {reward}")
@@ -69,7 +70,7 @@ def main(args: argparse.Namespace):
         )
         agent = AIPlan4GridAgent(
             env=env,
-            id=0,
+            scenario_id=parameters[cfg.SCENARIO],
             operational_horizon=parameters[cfg.OPERATIONAL_HORIZON],
             solver=parameters[cfg.SOLVER],
             debug=True,

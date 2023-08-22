@@ -17,5 +17,5 @@ usage: main.py [-h] [-c CONFIG_FILE]
 optional arguments:
   -h, --help            show this help message and exit
   -c CONFIG_FILE, --config-file CONFIG_FILE
-                        Configuration file path
+                        Configuration file path. If not given, the default configuration file will be used.
 ```

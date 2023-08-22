@@ -10,6 +10,7 @@ OPERATIONAL_HORIZON = "operational_horizon"
 TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
 SOLVER = "solver"
+SCENARIO = "scenario"
 
 # DO NOT CHANGE THE FOLLOWING STRINGS (USED BY THE BACKEND)
 ###########################################################

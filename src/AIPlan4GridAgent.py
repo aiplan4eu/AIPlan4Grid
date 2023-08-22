@@ -82,7 +82,7 @@ class AIPlan4GridAgent:
     def __init__(
         self,
         env: Environment,
-        id: int,
+        scenario_id: int,
         operational_horizon: int,
         solver: str,
         debug: bool = False,
@@ -99,7 +99,7 @@ class AIPlan4GridAgent:
             )
 
         self.env = env
-        self.env.set_id(id)
+        self.env.set_id(scenario_id)
         self.operational_horizon = operational_horizon
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
@@ -168,8 +168,17 @@ class AIPlan4GridAgent:
 
         return initial_states, forecasted_states
 
-    def check_congestions(self):
-        return np.any(self.curr_obs.rho >= 1)
+    def check_grid_health(self):
+        congested = np.any(self.curr_obs.rho >= 1)
+        if congested:
+            print("\tCongestion detected!")
+            congested_lines = np.where(self.curr_obs.rho >= 1)[0]
+            for line in congested_lines:
+                print(
+                    f"\t\tLine {line} is congested with a flow of {self.curr_obs.p_or[line]:.2f} MW,",
+                    f"but have a maximum flow of {self.grid_params[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]:.2f} MW",
+                )
+        return congested
 
     def update_states(self):
         self.initial_states, self.forecasted_states = self.get_states()
@@ -221,9 +230,9 @@ class AIPlan4GridAgent:
 
     def get_actions(self, step: int):
         self.update_states()
-        # if self.check_congestions() == False:
-        #     print("\tNo congestion detected, no need to solve UP problem")
-        #     return self.env.action_space({})
+        if self.check_grid_health() == False:
+            print("\tNo congestion detected, no need to solve UP problem.")
+            return self.env.action_space({})
         print("\tCreating UP problem...")
         upp = UnifiedPlanningProblem(
             self.operational_horizon,
@@ -232,7 +241,7 @@ class AIPlan4GridAgent:
             self.initial_states,
             self.forecasted_states,
             self.solver,
-            id=step,
+            problem_id=step,
         )
         print(f"\tSaving UP problem in {cfg.LOG_DIR}")
         upp.save_problem()
