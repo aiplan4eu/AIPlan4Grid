@@ -190,8 +190,6 @@ class AIPlan4GridAgent:
         # then we parse the up actions
         for action in up_actions:
             action = action.action.name
-            if action.startswith("update"):
-                continue
             # we split the string to extract the information
             action_info = action.split("_")
             # we get the type of the action

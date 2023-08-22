@@ -112,13 +112,6 @@ class UnifiedPlanningProblem:
             ]
         )
 
-        self.update_status = np.array(
-            [
-                Fluent(f"update_status_{t}", BoolType())
-                for t in range(self.operational_horizon)
-            ]
-        )
-
     def create_gen_actions(self) -> dict:
         actions_costs = {}
 
@@ -151,7 +144,6 @@ class UnifiedPlanningProblem:
                         abs(i - self.initial_states[cfg.GENERATORS][gen_id])
                         * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][gen_id]
                     )
-                    action.add_precondition(Iff(self.update_status[0], False))
                     action.add_precondition(
                         And(
                             GE(
@@ -248,23 +240,9 @@ class UnifiedPlanningProblem:
                 # TODO
         return actions_costs
 
-    def create_update_status_actions(self):
-        actions_costs = {}
-        self.update_status_actions = []
-        for t in range(self.operational_horizon):
-            self.update_status_actions.append(
-                InstantaneousAction(f"update_status_{t}_true")
-            )
-            action = self.update_status_actions[-1]
-            action.add_precondition(Iff(self.update_status[t], False))
-            action.add_effect(self.update_status[t], True)
-            actions_costs[action] = 0
-        return actions_costs
-
     def create_actions(self):
         gen_costs = self.create_gen_actions()
-        update_status_costs = self.create_update_status_actions()
-        self.actions_costs = {**gen_costs, **update_status_costs}
+        self.actions_costs = {**gen_costs}
 
     def create_problem(self):
         problem = Problem(f"GridStability_{self.id}")
@@ -279,12 +257,8 @@ class UnifiedPlanningProblem:
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
 
-        for t in range(self.operational_horizon):
-            problem.add_fluent(self.update_status[t])
-
         # add actions
         problem.add_actions(self.pgen_actions)
-        problem.add_actions(self.update_status_actions)
 
         # add initial states
         for gen_id in range(self.nb_gens):
@@ -310,28 +284,20 @@ class UnifiedPlanningProblem:
                     ),
                 )
 
-        for t in range(self.operational_horizon):
-            problem.set_initial_value(self.update_status[t], False)
+        # problem.set_initial_value(self.congestions[17][0], True)
+        # problem.set_initial_value(self.flows[17][0], 40)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
         problem.add_quality_metric(self.quality_metric)
 
-        goal_1 = [
+        goals = [
             Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
             for t in range(self.operational_horizon)
         ]  # is it too restrictive?
 
-        goal_2 = [
-            Iff(self.update_status[t], True) for t in range(self.operational_horizon)
-        ]
-
-        goals = goal_1 + goal_2
-
-        problem.add_goal(
-            And(goal_1)
-        )  # TODO: finish the implementation of the update_status actions
+        problem.add_goal(And(goals))
 
         self.problem = problem
 
@@ -343,7 +309,7 @@ class UnifiedPlanningProblem:
         # upp problem, "upp" stands for unified planning problem
         with open(pjoin(self.log_dir, upp_file), "w") as f:
             f.write(
-                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.congestions) + compute_size_array(self.flows) + compute_size_array(self.update_status)}\n"
+                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
             f.write(f"number of actions: {len(self.pgen_actions)}\n")
             f.write(self.problem.__str__())
@@ -378,9 +344,6 @@ class UnifiedPlanningProblem:
                         states = [initial_state]
                         for act in plan.actions:
                             self.logger.debug(f"\taction: {act}")
-                            if act.action.name.startswith("update_status"):
-                                self.logger.debug("\tupdate status new value: True")
-                                continue
                             state_test = simulator.apply(initial_state, act)
                             states.append(state_test)
                             self.logger.debug(
