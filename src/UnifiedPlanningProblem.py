@@ -150,14 +150,14 @@ class UnifiedPlanningProblem:
                                 self.pgen[gen_id][0],
                                 float(
                                     self.forecasted_states[cfg.GENERATORS][0][gen_id]
-                                    - self.float_precision
+                                    - 10**-self.float_precision
                                 ),
                             ),
                             LE(
                                 self.pgen[gen_id][0],
                                 float(
                                     self.forecasted_states[cfg.GENERATORS][0][gen_id]
-                                    + self.float_precision
+                                    + 10**-self.float_precision
                                 ),
                             ),
                         )
