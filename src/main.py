@@ -40,6 +40,7 @@ def parse_ini(ini_file_path: str) -> dict:
         cfg.OPERATIONAL_HORIZON: int(parameters_section[cfg.OPERATIONAL_HORIZON]),
         cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
+        cfg.DISCRETIZATION: int(parameters_section[cfg.DISCRETIZATION]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
         cfg.SCENARIO: int(parameters_section[cfg.SCENARIO]),
     }
@@ -72,6 +73,7 @@ def main(args: argparse.Namespace):
             env=env,
             scenario_id=parameters[cfg.SCENARIO],
             operational_horizon=parameters[cfg.OPERATIONAL_HORIZON],
+            discretization=parameters[cfg.DISCRETIZATION],
             solver=parameters[cfg.SOLVER],
             debug=True,
         )

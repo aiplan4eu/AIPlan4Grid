@@ -18,6 +18,7 @@ class UnifiedPlanningProblem:
     def __init__(
         self,
         operational_horizon: int,
+        discretization: int,
         ptdf: list[list],
         grid_params: dict,
         initial_states: dict,
@@ -28,6 +29,7 @@ class UnifiedPlanningProblem:
         get_environment().credits_stream = None
 
         self.operational_horizon = operational_horizon
+        self.discretization = discretization
         self.ptdf = ptdf
         self.grid_params = grid_params
         self.nb_gens = len(grid_params[cfg.GENERATORS][cfg.PMAX])
@@ -127,7 +129,7 @@ class UnifiedPlanningProblem:
                 pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
                 pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
 
-                for i in range(pmin, pmax + 1):
+                for i in range(pmin, pmax + 1, self.discretization):
                     if not (
                         float(self.initial_states[cfg.GENERATORS][gen_id])
                         >= i - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
@@ -329,8 +331,10 @@ class UnifiedPlanningProblem:
             output = planner.solve(self.problem)
             plan = output.plan
             if plan is None:
-                self.logger.error(output)
-                raise Exception("\tNo plan found!")
+                print("\tNo plan found!")
+                self.logger.warning(output)
+                self.logger.warning("Plan returned: []")
+                return []
             else:
                 self.logger.info(f"Status: {output.status}")
                 self.logger.info(f"Plan found: {plan}\n")

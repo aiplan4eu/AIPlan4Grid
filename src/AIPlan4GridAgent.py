@@ -84,6 +84,7 @@ class AIPlan4GridAgent:
         env: Environment,
         scenario_id: int,
         operational_horizon: int,
+        discretization: int,
         solver: str,
         debug: bool = False,
     ):
@@ -101,6 +102,7 @@ class AIPlan4GridAgent:
         self.env = env
         self.env.set_id(scenario_id)
         self.operational_horizon = operational_horizon
+        self.discretization = discretization
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
         self.ptdf = self.get_ptdf()
@@ -168,7 +170,10 @@ class AIPlan4GridAgent:
 
         return initial_states, forecasted_states
 
-    def check_grid_health(self):
+    def check_blackout(self):
+        return np.all(self.curr_obs.p_or == 0)
+
+    def check_congestions(self):
         congested = np.any(self.curr_obs.rho >= 1)
         if congested:
             print("\tCongestion detected!")
@@ -181,6 +186,8 @@ class AIPlan4GridAgent:
         return congested
 
     def update_states(self):
+        if self.check_blackout():
+            raise RuntimeError("\tBlackout!")
         self.initial_states, self.forecasted_states = self.get_states()
 
     def up_actions_to_g2op_actions(self, up_actions):
@@ -228,12 +235,13 @@ class AIPlan4GridAgent:
 
     def get_actions(self, step: int):
         self.update_states()
-        if self.check_grid_health() == False:
+        if self.check_congestions() == False:
             print("\tNo congestion detected, no need to solve UP problem.")
             return self.env.action_space({})
         print("\tCreating UP problem...")
         upp = UnifiedPlanningProblem(
             self.operational_horizon,
+            self.discretization,
             self.ptdf,
             self.grid_params,
             self.initial_states,

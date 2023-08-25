@@ -9,6 +9,7 @@ ENV_NAME = "env_name"
 OPERATIONAL_HORIZON = "operational_horizon"
 TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
+DISCRETIZATION = "discretization"
 SOLVER = "solver"
 SCENARIO = "scenario"
 
