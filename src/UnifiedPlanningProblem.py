@@ -344,7 +344,7 @@ class UnifiedPlanningProblem:
                         states = [initial_state]
                         for act in plan.actions:
                             self.logger.debug(f"\taction: {act}")
-                            state_test = simulator.apply(initial_state, act)
+                            state_test = simulator.apply(states[-1], act)
                             states.append(state_test)
                             self.logger.debug(
                                 f"\tgens new value: {[[float(state_test.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.operational_horizon)]}"
