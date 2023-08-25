@@ -12,6 +12,7 @@ from unified_planning.shortcuts import *
 
 import config as cfg
 from utils import compute_size_array, setup_logger
+from grid2op.Observation import baseObservation
 
 
 class UnifiedPlanningProblem:
@@ -23,6 +24,7 @@ class UnifiedPlanningProblem:
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
+        obs: baseObservation,
         problem_id: int,
     ):
         get_environment().credits_stream = None
@@ -37,6 +39,7 @@ class UnifiedPlanningProblem:
         self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
+        self.obs= obs
         self.id = problem_id
 
         self.float_precision = 6
@@ -72,6 +75,26 @@ class UnifiedPlanningProblem:
                     for t in range(self.operational_horizon)
                 ]
                 for gen_id in range(self.nb_gens)
+            ]
+        )
+
+        self.pstor = np.array(
+            [
+                [
+                    Fluent(f"pstor_{stor_id}_{t}", RealType())
+                    for t in range(self.operational_horizon)
+                ]
+                for stor_id in range(self.nb_storages)
+            ]
+        )
+
+        self.pstor_exp = np.array(
+            [
+                [
+                    FluentExp(self.pgen[stor_id][t])
+                    for t in range(self.operational_horizon)
+                ]
+                for stor_id in range(self.nb_storages)
             ]
         )
 
@@ -240,8 +263,196 @@ class UnifiedPlanningProblem:
                 # TODO
         return actions_costs
 
+    def create_stor_actions(self) -> dict:
+        # for horizon 0
+        # Creating actions
+        self.pstor_actions = []
+        actions_costs = {}
+
+        # for horizon 0
+        for stor_id in range(self.nb_storages):
+            print(self.grid_params[cfg.STORAGES])
+            socMax = int(self.grid_params[cfg.STORAGES][cfg.EMAX][stor_id])
+            socMin = int(self.grid_params[cfg.STORAGES][cfg.EMIN][stor_id])
+            pmaxCharge = self.grid_params[cfg.STORAGES][cfg.MAX_PCHARGE][stor_id]
+            pmaxDischarge= self.grid_params[cfg.STORAGES][cfg.MAX_PDISCHARGE][stor_id]
+            efficiencyC= self.grid_params[cfg.STORAGES][cfg.CHARGING_EFFICIENCY][stor_id]
+            efficiencyD = self.grid_params[cfg.STORAGES][cfg.DISCHARGING_EFFICIENCY][stor_id]
+            connected_bus = int(self.obs.storage_bus[stor_id])
+
+            print(type(connected_bus))
+
+            if efficiencyC == 0 or efficiencyD==0:
+                self.logger.warning(f"Storage : {stor_id} has 0 charge or discharge efficiency no action created")
+                continue
+            print("creating storage actions")
+            for i in range(socMin, socMax + 1):
+
+                if not (
+                    # the max charge/discharge power in grid2Op are given from the grid referencial not from the storage asset.
+                    #TODO get time step size from grid2Op
+                    self.initial_states[cfg.STORAGES][stor_id] >= i - pmaxCharge*5/60/efficiencyC
+                    and self.initial_states[cfg.STORAGES][stor_id] <= i + pmaxDischarge**5/60*efficiencyD
+                ):
+                    continue
+
+                deltaSOC_withforecasted = i- float(self.forecasted_states[cfg.STORAGES][0][stor_id])
+                print("before storage action precondition")
+                self.pstor_actions.append(
+                InstantaneousAction(f"stor_target_{stor_id}_{0}_{i}"))
+                action = self.pstor_actions[-1]
+                actions_costs[action] = float(
+                    abs(i - self.initial_states[cfg.STORAGES][stor_id])
+                    * self.grid_params[cfg.STORAGES][cfg.STOR_COST_PER_MW][stor_id]
+                )
+                print("add storage action precondition")
+                action.add_precondition(
+                    And(
+                        GE(
+                            self.pstor[stor_id][0],
+                            float(
+                                self.forecasted_states[cfg.STORAGES][0][stor_id]
+                                - 10**-self.float_precision
+                            ),
+                        ),
+                        LE(
+                            self.pstor[stor_id][0],
+                            float(
+                                self.forecasted_states[cfg.STORAGES][0][stor_id]
+                                + 10**-self.float_precision
+                            ),
+                        ),
+                    )
+                )
+                action.add_effect(self.pstor[stor_id][0], i)
+                for k in range(self.nb_transmission_lines):
+                    diff_charge = float(
+                        round(
+                            self.ptdf[k][connected_bus]*deltaSOC_withforecasted*60/5*(1/efficiencyC),
+                            self.float_precision,
+                            )
+                    )
+                    diff_discharge = float(
+                        round(
+                            self.ptdf[k][connected_bus]*deltaSOC_withforecasted*60/5*(efficiencyD),
+                            self.float_precision,
+                            )
+                    )
+
+                    action.add_increase_effect(self.flows[k][0],diff_charge,deltaSOC_withforecasted>=0)
+                    action.add_increase_effect(self.flows[k][0],diff_discharge,deltaSOC_withforecasted<0)
+
+                    action.add_effect(
+                        self.congestions[k][0],
+                        True,
+                        condition=And(
+                            deltaSOC_withforecasted>=0,
+                            Or(
+                                GE(
+                                    self.flows[k][0] + diff_charge,
+                                    float(
+                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
+                                    ),
+                                LE(
+                                    self.flows[k][0] + diff_charge,
+                                    float(
+                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
+                                    ),
+                            )
+                        ) ,
+                    )
+                    action.add_effect(
+                        self.congestions[k][0],
+                        True,
+                        condition=And(
+                            deltaSOC_withforecasted<0,
+                            Or(
+                                GE(
+                                    self.flows[k][0] + diff_discharge,
+                                    float(
+                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
+                                    ),
+                                LE(
+                                    self.flows[k][0] + diff_discharge,
+                                    float(
+                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
+                                    ),
+                            )
+                        ) ,
+                    )
+
+                    action.add_effect(
+                        self.congestions[k][0],
+                        False,
+                        condition=And(
+                            deltaSOC_withforecasted>=0,
+                            LT(
+                                self.flows[k][0] + diff_charge,
+                                float(
+                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                            GT(
+                                self.flows[k][0] + diff_charge,
+                                float(
+                                    -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                        ),
+                    )
+
+                    action.add_effect(
+                        self.congestions[k][0],
+                        False,
+                        condition=And(
+                            deltaSOC_withforecasted<0,
+                            LT(
+                                self.flows[k][0] + diff_discharge,
+                                float(
+                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                            GT(
+                                self.flows[k][0] + diff_discharge,
+                                float(
+                                    -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                            ),
+                    )
+
+                    if len(self.slack_gens) > 1:
+                        raise ("More than one slack generator!")
+                    else:
+                        action.add_decrease_effect(
+                            self.pgen[self.slack_gens[-1]][0],
+                            (i- float(self.forecasted_states[cfg.STORAGES][0][stor_id]))*60/5,
+                            )
+        return actions_costs
+
     def create_actions(self):
         gen_costs = self.create_gen_actions()
+        stor_costs =self.create_stor_actions()
         self.actions_costs = {**gen_costs}
 
     def create_problem(self):
@@ -252,6 +463,10 @@ class UnifiedPlanningProblem:
             for t in range(self.operational_horizon):
                 problem.add_fluent(self.pgen[gen_id][t])
 
+        for stor_id in range(self.nb_storages):
+            for t in range(self.operational_horizon):
+                problem.add_fluent(self.pstor[stor_id][t])
+
         for k in range(self.nb_transmission_lines):
             for t in range(self.operational_horizon):
                 problem.add_fluent(self.congestions[k][t])
@@ -259,6 +474,7 @@ class UnifiedPlanningProblem:
 
         # add actions
         problem.add_actions(self.pgen_actions)
+        problem.add_actions(self.pstor_actions)
 
         # add initial states
         for gen_id in range(self.nb_gens):
