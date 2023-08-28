@@ -24,6 +24,7 @@ class AIPlan4GridAgent:
         grid_params[cfg.GENERATORS][cfg.SLACK] = self.grid.gen[cfg.SLACK].to_numpy()
         #TODO: bus number can change, has to be taken from observation
         grid_params[cfg.GENERATORS][cfg.BUS] = self.grid.gen[cfg.BUS].to_numpy()
+        #TODO: get sub id as well in case several bus are used (as for storage)
 
         # Storages parameters
         grid_params[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
@@ -38,6 +39,7 @@ class AIPlan4GridAgent:
         grid_params[cfg.STORAGES][cfg.MAX_PCHARGE] = self.env.storage_max_p_prod
         grid_params[cfg.STORAGES][cfg.MAX_PDISCHARGE] = self.env.storage_max_p_absorb
         grid_params[cfg.STORAGES][cfg.STOR_COST_PER_MW] = self.env.storage_marginal_cost
+        grid_params[cfg.STORAGES][cfg.SUBID] = self.env.storage_to_subid
 
         # Lines parameters
         power_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
@@ -108,7 +110,7 @@ class AIPlan4GridAgent:
         self.operational_horizon = operational_horizon
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
-        self.ptdf = self.get_ptdf()#TODO move to obs
+        self.ptdf = self.get_ptdf()#TODO move to obs and perform test in case there is bus 2 that is used as well.
         self.curr_obs = self.env.reset()
         self.solver = solver
         self.debug = debug
@@ -162,6 +164,7 @@ class AIPlan4GridAgent:
                 ]
             ),
         }
+
 
         initial_states = {
             cfg.GENERATORS: self.curr_obs.gen_p,
@@ -233,10 +236,9 @@ class AIPlan4GridAgent:
 
     def get_actions(self, step: int):
         self.update_states()
-        #TODO: uncomment
-        #if self.check_grid_health() == False:
-        #    print("\tNo congestion detected, no need to solve UP problem.")
-        #    return self.env.action_space({})
+        if self.check_grid_health() == False:
+            print("\tNo congestion detected, no need to solve UP problem.")
+            return self.env.action_space({})
         print("\tCreating UP problem...")
         upp = UnifiedPlanningProblem(
             self.operational_horizon,

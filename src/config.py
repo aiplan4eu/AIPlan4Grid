@@ -16,6 +16,7 @@ SCENARIO = "scenario"
 ###########################################################
 SLACK = "slack"
 BUS = "bus"
+SUBID = "subid"
 
 GENERATORS = "generators"
 PMIN = "pmin"
