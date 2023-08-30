@@ -12,6 +12,7 @@ from unified_planning.shortcuts import *
 
 import config as cfg
 from utils import compute_size_array, setup_logger
+from grid2op.Observation import baseObservation
 
 
 class UnifiedPlanningProblem:
@@ -24,6 +25,7 @@ class UnifiedPlanningProblem:
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
+        obs: baseObservation,
         problem_id: int,
     ):
         get_environment().credits_stream = None
@@ -39,17 +41,22 @@ class UnifiedPlanningProblem:
         self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
         self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
         self.solver = solver
+        self.obs= obs
         self.id = problem_id
 
         self.float_precision = 6
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
+
         os.makedirs(self.log_dir, exist_ok=True)
 
         self.logger = setup_logger(
             f"{__name__}_{self.id}",
             self.log_dir,
         )
+
+        self.logger.debug(f' initial_states: {initial_states}')
+        self.logger.debug(f' forecasted_states: {forecasted_states}')
 
         self.create_fluents()
         self.create_actions()
@@ -74,6 +81,26 @@ class UnifiedPlanningProblem:
                     for t in range(self.operational_horizon)
                 ]
                 for gen_id in range(self.nb_gens)
+            ]
+        )
+
+        self.pstor = np.array(
+            [
+                [
+                    Fluent(f"pstor_{stor_id}_{t}", RealType())
+                    for t in range(self.operational_horizon)
+                ]
+                for stor_id in range(self.nb_storages)
+            ]
+        )
+
+        self.pstor_exp = np.array(
+            [
+                [
+                    FluentExp(self.pgen[stor_id][t])
+                    for t in range(self.operational_horizon)
+                ]
+                for stor_id in range(self.nb_storages)
             ]
         )
 
@@ -242,9 +269,164 @@ class UnifiedPlanningProblem:
                 # TODO
         return actions_costs
 
+    def create_stor_actions(self) -> dict:
+        # for horizon 0
+        # Creating actions
+        self.pstor_actions = []
+        actions_costs = {}
+
+        # for horizon 0
+        for stor_id in range(self.nb_storages):
+
+            socMax = int(self.grid_params[cfg.STORAGES][cfg.EMAX][stor_id])
+            socMin = int(self.grid_params[cfg.STORAGES][cfg.EMIN][stor_id])
+            pmaxCharge = self.grid_params[cfg.STORAGES][cfg.MAX_PCHARGE][stor_id]
+            pmaxDischarge= self.grid_params[cfg.STORAGES][cfg.MAX_PDISCHARGE][stor_id]
+            efficiencyC= self.grid_params[cfg.STORAGES][cfg.CHARGING_EFFICIENCY][stor_id]
+            efficiencyD = self.grid_params[cfg.STORAGES][cfg.DISCHARGING_EFFICIENCY][stor_id]
+            connected_bus = int(self.obs.storage_bus[stor_id])*int(self.grid_params[cfg.STORAGES][cfg.SUBID][stor_id])
+
+            forecasted_deltaSOC = self.initial_states[cfg.STORAGES][stor_id] - float(self.forecasted_states[cfg.STORAGES][0][stor_id])
+
+            if efficiencyC == 0 or efficiencyD==0:
+                self.logger.warning(f"Storage : {stor_id} has 0 charge or discharge efficiency no action created")
+                continue
+            self.logger.info(f"creating storage actions for {stor_id}")
+            for i in range(socMin, socMax + 1):
+
+                if not (
+                    # the max charge/discharge power in grid2Op are given from the grid referencial not from the storage asset.
+                    #TODO get time step size from grid2Op
+                    self.initial_states[cfg.STORAGES][stor_id] >= i - pmaxCharge*5/60/efficiencyC
+                    and self.initial_states[cfg.STORAGES][stor_id] <= i + pmaxDischarge*5/60*efficiencyD
+                ):
+                    continue
+
+                target_detltaSOC= i-self.initial_states[cfg.STORAGES][stor_id]
+                if target_detltaSOC >0:
+                    target_pcharge = (60/5)*target_detltaSOC/efficiencyC
+                    target_pdischare = 0
+                elif target_detltaSOC<0:
+                    target_pdischare = -(60/5)*target_detltaSOC*efficiencyD
+                    target_pcharge = 0
+                else:
+                    target_pdischare = 0
+                    target_pcharge=0
+
+                # although there can be a change in the delta SOC forecast ( due to loss) we will asusme the the forecasted power charge and dischare are always 0
+                # meaning that the forecasted plan for storage is to do nothing.
+                self.pstor_actions.append(
+                InstantaneousAction(f"stor_target_{stor_id}_{0}_{i}"))
+                action = self.pstor_actions[-1]
+
+                actions_costs[action] = float(
+                    abs(target_detltaSOC)
+                    * self.grid_params[cfg.STORAGES][cfg.STOR_COST_PER_MW][stor_id]
+                )
+                action.add_precondition(
+                    And(
+                        GE(
+                            self.pstor[stor_id][0],
+                            float(
+                                self.forecasted_states[cfg.STORAGES][0][stor_id]
+                                - 10**-self.float_precision
+                            ),
+                        ),
+                        LE(
+                            self.pstor[stor_id][0],
+                            float(
+                                self.forecasted_states[cfg.STORAGES][0][stor_id]
+                                + 10**-self.float_precision
+                            ),
+                        ),
+                    )
+                )
+                action.add_effect(self.pstor[stor_id][0], i)
+                self.logger.debug(f'action with storage {stor_id} for reaching soc {i} and connected bus {connected_bus}')
+                self.logger.debug(f'target pcharge is {target_pcharge}  and pdischarge is {target_pdischare}')
+
+                for k in range(self.nb_transmission_lines):
+
+                    # not necessary if one time step
+                    #diff_charge = float(
+                    #    round(
+                    #        self.ptdf[k][connected_bus]*target_pcharge,
+                    #        self.float_precision,
+                    #        )
+                    #)
+                    #diff_discharge = float(
+                    #    round(
+                    #        -self.ptdf[k][connected_bus]*target_pdischare,
+                    #        self.float_precision,
+                    #        )
+                    #)
+
+                    diff_flow = float(
+                        round(self.ptdf[k][connected_bus]*(-target_pcharge+target_pdischare),self.float_precision)
+                    )
+                    action.add_increase_effect(self.flows[k][0],diff_flow)
+                    #action.add_increase_effect(self.flows[k][0],diff_discharge,deltaSOC_withforecasted<0) not necessay if one time step
+
+                    action.add_effect(
+                        self.congestions[k][0],
+                        True,
+                        condition=Or(
+                            GE(
+                                self.flows[k][0] + diff_flow,
+                                float(
+                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                            LE(
+                                self.flows[k][0] + diff_flow,
+                                float(
+                                    -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                            ),
+                        )
+                    )
+
+                    action.add_effect(
+                        self.congestions[k][0],
+                        False,
+                        condition=And(
+                            LT(
+                                self.flows[k][0] + diff_flow,
+                                float(
+                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                            GT(
+                                self.flows[k][0] + diff_flow,
+                                float(
+                                    -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                ),
+                                ),
+                        ),
+                    )
+
+                if len(self.slack_gens) > 1:
+                    raise ("More than one slack generator!")
+                else:
+                    action.add_decrease_effect(
+                        self.pgen[self.slack_gens[-1]][0],
+                        -target_pcharge+target_pdischare,
+                        )
+        return actions_costs
+
     def create_actions(self):
         gen_costs = self.create_gen_actions()
-        self.actions_costs = {**gen_costs}
+        stor_costs =self.create_stor_actions()
+
+        self.actions_costs = {**gen_costs,**stor_costs}
 
     def create_problem(self):
         problem = Problem(f"GridStability_{self.id}")
@@ -254,6 +436,10 @@ class UnifiedPlanningProblem:
             for t in range(self.operational_horizon):
                 problem.add_fluent(self.pgen[gen_id][t])
 
+        for stor_id in range(self.nb_storages):
+            for t in range(self.operational_horizon):
+                problem.add_fluent(self.pstor[stor_id][t])
+
         for k in range(self.nb_transmission_lines):
             for t in range(self.operational_horizon):
                 problem.add_fluent(self.congestions[k][t])
@@ -261,6 +447,7 @@ class UnifiedPlanningProblem:
 
         # add actions
         problem.add_actions(self.pgen_actions)
+        problem.add_actions(self.pstor_actions)
 
         # add initial states
         for gen_id in range(self.nb_gens):
@@ -269,6 +456,13 @@ class UnifiedPlanningProblem:
                     self.pgen[gen_id][t],
                     float(self.forecasted_states[cfg.GENERATORS][t][gen_id]),
                 )
+        for stor_id in range(self.nb_storages):
+            for t in range(self.operational_horizon):
+                problem.set_initial_value(
+                    self.pstor[stor_id][t],
+                    float(self.forecasted_states[cfg.STORAGES][t][stor_id]),
+                )
+                #TODO: correct because no forecasted state for storage when several time step
 
         for k in range(self.nb_transmission_lines):
             for t in range(self.operational_horizon):
@@ -285,9 +479,6 @@ class UnifiedPlanningProblem:
                         )
                     ),
                 )
-
-        # problem.set_initial_value(self.congestions[17][0], True)
-        # problem.set_initial_value(self.flows[17][0], 40)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
@@ -311,9 +502,9 @@ class UnifiedPlanningProblem:
         # upp problem, "upp" stands for unified planning problem
         with open(pjoin(self.log_dir, upp_file), "w") as f:
             f.write(
-                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
+                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.pstor)+ compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
-            f.write(f"number of actions: {len(self.pgen_actions)}\n")
+            f.write(f"number of actions: {len(self.pgen_actions)+len(self.pstor_actions)}\n")
             f.write(self.problem.__str__())
         f.close()
 
@@ -321,6 +512,7 @@ class UnifiedPlanningProblem:
         pddl_writer = up.io.PDDLWriter(self.problem, True, True)
         pddl_writer.write_problem(pjoin(self.log_dir, pddl_file))
         pddl_writer.write_domain(pjoin(self.log_dir, pddl_domain_file))
+
 
     def solve(self, simulate=False):
         with OneshotPlanner(

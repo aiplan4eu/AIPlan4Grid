@@ -17,6 +17,7 @@ SCENARIO = "scenario"
 ###########################################################
 SLACK = "slack"
 BUS = "bus"
+SUBID = "subid"
 
 GENERATORS = "generators"
 PMIN = "pmin"
@@ -32,7 +33,9 @@ EMIN = "Emin"
 LOSS = "loss"
 CHARGING_EFFICIENCY = "charging_efficiency"
 DISCHARGING_EFFICIENCY = "discharging_efficiency"
-
+MAX_PCHARGE= "max_pcharge"
+MAX_PDISCHARGE="max_pdischarge"
+STOR_COST_PER_MW = "storage_marginal_cost"
 
 TRANSMISSION_LINES = "transmission_lines"
 FLOWS = "flows"
