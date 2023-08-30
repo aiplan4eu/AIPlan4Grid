@@ -50,9 +50,11 @@ def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
     for i in range(STRATEGIC_HORIZON):
         print(f"\n* Episode {i}:")
-        obs, reward, *_ = agent.progress(i)
+        obs, reward, done,*_ = agent.progress(i)
         print(f"\tReward: {reward}")
-
+        if done and i != (STRATEGIC_HORIZON-1):
+            break
+    agent.display_lastObs()
 
 def main(args: argparse.Namespace):
     try:

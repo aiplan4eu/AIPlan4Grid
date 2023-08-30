@@ -521,8 +521,8 @@ class UnifiedPlanningProblem:
             output = planner.solve(self.problem)
             plan = output.plan
             if plan is None:
-                self.logger.error(output)
-                raise Exception("\tNo plan found!")
+                self.logger.warning(output)
+                return []
             else:
                 self.logger.info(f"Status: {output.status}")
                 self.logger.info(f"Plan found: {plan}\n")

@@ -124,6 +124,14 @@ class AIPlan4GridAgent:
         plot_helper.plot_obs(obs)
         plt.show()
 
+    def display_lastObs(self):
+        import matplotlib.pyplot as plt
+        from grid2op.PlotGrid import PlotMatplot
+
+        plot_helper = PlotMatplot(self.env.observation_space)
+        plot_helper.plot_obs(self.last_obs)
+        plt.show()
+
     def get_states(self):
         do_nothing_action = self.env.action_space({})
 
@@ -264,5 +272,6 @@ class AIPlan4GridAgent:
         actions = self.get_actions(step)
         observation, reward, done, info = self.env.step(actions)
         self.curr_obs = observation
+        self.last_obs = self.curr_obs
         self.done = done
         return observation, reward, done, info
