@@ -1,14 +1,16 @@
 from math import atan, cos, sqrt
 from timeit import default_timer as timer
 
+import matplotlib.pyplot as plt
 import numpy as np
+from grid2op.Action import ActionSpace
 from grid2op.Environment import Environment
+from grid2op.PlotGrid import PlotMatplot
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
-import config as cfg
-from UnifiedPlanningProblem import UnifiedPlanningProblem, InstantaneousAction
-from grid2op.Action import ActionSpace
+import plan4grid.config as cfg
+from plan4grid.UnifiedPlanningProblem import InstantaneousAction, UnifiedPlanningProblem
 
 
 class AIPlan4GridAgent:
@@ -134,8 +136,6 @@ class AIPlan4GridAgent:
 
     def display_grid(self):
         """Display the current state of the grid."""
-        import matplotlib.pyplot as plt
-        from grid2op.PlotGrid import PlotMatplot
 
         plot_helper = PlotMatplot(self.env.observation_space)
         plot_helper.plot_obs(self.curr_obs)

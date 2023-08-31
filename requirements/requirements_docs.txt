@@ -1,0 +1,8 @@
+sphinx
+sphinx_design
+sphinx_rtd_theme
+autodocsumm
+ipython
+docutils<0.17
+matplotlib
+sphinxcontrib-programoutput

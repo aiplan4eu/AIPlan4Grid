@@ -3,7 +3,7 @@ from os.path import join as pjoin
 
 import numpy as np
 import unified_planning as up
-from grid2op.Observation import baseObservation
+from grid2op.Observation import BaseObservation
 from unified_planning.engines import PlanGenerationResultStatus
 from unified_planning.engines.sequential_simulator import (
     evaluate_quality_metric,
@@ -11,8 +11,8 @@ from unified_planning.engines.sequential_simulator import (
 )
 from unified_planning.shortcuts import *
 
-import config as cfg
-from utils import compute_size_array, setup_logger
+import plan4grid.config as cfg
+from plan4grid.utils import compute_size_array, setup_logger
 
 
 class UnifiedPlanningProblem:
@@ -27,7 +27,7 @@ class UnifiedPlanningProblem:
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
-        obs: baseObservation,
+        obs: BaseObservation,
         problem_id: int,
     ):
         get_environment().credits_stream = None

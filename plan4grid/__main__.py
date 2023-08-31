@@ -3,10 +3,10 @@ import configparser
 from os.path import join as pjoin
 
 import grid2op
-from AIPlan4GridAgent import AIPlan4GridAgent
+from plan4grid.AIPlan4GridAgent import AIPlan4GridAgent
 from grid2op.Backend import PandaPowerBackend
 
-import config as cfg
+import plan4grid.config as cfg
 import shutil
 import time
 
@@ -43,7 +43,7 @@ def parse_ini(ini_file_path: str) -> dict:
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.DISCRETIZATION: int(parameters_section[cfg.DISCRETIZATION]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
-        cfg.SCENARIO: int(parameters_section[cfg.SCENARIO]),
+        cfg.SCENARIO_ID: int(parameters_section[cfg.SCENARIO_ID]),
     }
     return parameters
 
@@ -78,7 +78,7 @@ def main(args: argparse.Namespace):
         )
         agent = AIPlan4GridAgent(
             env=env,
-            scenario_id=parameters[cfg.SCENARIO],
+            scenario_id=parameters[cfg.SCENARIO_ID],
             operational_horizon=parameters[cfg.OPERATIONAL_HORIZON],
             discretization=parameters[cfg.DISCRETIZATION],
             solver=parameters[cfg.SOLVER],

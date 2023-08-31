@@ -11,7 +11,7 @@ TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
 DISCRETIZATION = "discretization"
 SOLVER = "solver"
-SCENARIO = "scenario"
+SCENARIO_ID = "scenario_id"
 
 # DO NOT CHANGE THE FOLLOWING STRINGS (USED BY THE BACKEND)
 ###########################################################

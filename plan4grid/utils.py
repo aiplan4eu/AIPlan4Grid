@@ -4,7 +4,7 @@ from os.path import join as pjoin
 
 import numpy as np
 
-import config as cfg
+import plan4grid.config as cfg
 
 
 def verbose_print(verbose: bool) -> callable:

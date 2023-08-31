@@ -4,3 +4,4 @@ numpy==1.23.5
 pandapower==2.13.1
 unified-planning==0.6.0
 up-enhsp==0.0.13
+matplotlib
