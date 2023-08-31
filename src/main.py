@@ -8,6 +8,7 @@ from grid2op.Backend import PandaPowerBackend
 
 import config as cfg
 import shutil
+import time
 
 
 def clean_logs():
@@ -51,11 +52,14 @@ def routine(agent: AIPlan4GridAgent):
     """Routine for the agent"""
     for i in range(STRATEGIC_HORIZON):
         print(f"\n* Episode {i}:")
-        obs, reward, done,*_ = agent.progress(i)
+        obs, reward, done, *_ = agent.progress(i)
         print(f"\tReward: {reward}")
-        if done and i != (STRATEGIC_HORIZON-1):
+        if done and i != (STRATEGIC_HORIZON - 1):
+            print("The episode is done before the end of the strategic horizon!")
             break
-    agent.display_lastObs()
+    time.sleep(2)
+    agent.display_grid()
+
 
 def main(args: argparse.Namespace):
     try:

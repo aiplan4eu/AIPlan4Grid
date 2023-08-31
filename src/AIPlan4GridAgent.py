@@ -22,9 +22,9 @@ class AIPlan4GridAgent:
         grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN] = self.env.gen_max_ramp_down
         grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW] = self.env.gen_cost_per_MW
         grid_params[cfg.GENERATORS][cfg.SLACK] = self.grid.gen[cfg.SLACK].to_numpy()
-        #TODO: bus number can change, has to be taken from observation
+        # TODO: bus number can change, has to be taken from observation
         grid_params[cfg.GENERATORS][cfg.BUS] = self.grid.gen[cfg.BUS].to_numpy()
-        #TODO: get sub id as well in case several bus are used (as for storage)
+        # TODO: get sub id as well in case several bus are used (as for storage)
 
         # Storages parameters
         grid_params[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
@@ -36,10 +36,14 @@ class AIPlan4GridAgent:
         grid_params[cfg.STORAGES][
             cfg.DISCHARGING_EFFICIENCY
         ] = self.env.storage_discharging_efficiency
-        grid_params[cfg.STORAGES][cfg.MAX_PCHARGE] = self.env.storage_max_p_prod
-        grid_params[cfg.STORAGES][cfg.MAX_PDISCHARGE] = self.env.storage_max_p_absorb
-        grid_params[cfg.STORAGES][cfg.STOR_COST_PER_MW] = self.env.storage_marginal_cost
-        grid_params[cfg.STORAGES][cfg.SUBID] = self.env.storage_to_subid
+        grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD] = self.env.storage_max_p_prod
+        grid_params[cfg.STORAGES][
+            cfg.STORAGE_MAX_P_ABSORB
+        ] = self.env.storage_max_p_absorb
+        grid_params[cfg.STORAGES][
+            cfg.STORAGE_COST_PER_MW
+        ] = self.env.storage_marginal_cost
+        grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID] = self.env.storage_to_subid
 
         # Lines parameters
         power_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
@@ -58,7 +62,7 @@ class AIPlan4GridAgent:
             dtype=float,
         )  # from Ampere to MW
 
-        #TODO move to observable
+        # TODO move to observable
         for tl_idx in power_lines.index:
             grid_params[cfg.TRANSMISSION_LINES][tl_idx] = {
                 cfg.FROM_BUS: power_lines.at[tl_idx, cfg.FROM_BUS],
@@ -112,7 +116,8 @@ class AIPlan4GridAgent:
         self.discretization = discretization
         self.grid = self.env.backend._grid
         self.grid_params = self._get_grid_params()
-        self.ptdf = self.get_ptdf()#TODO move to obs and perform test in case there is bus 2 that is used as well.
+        self.ptdf = self.get_ptdf()
+        # TODO move to obs and perform test in case there is bus 2 that is used as well.
         self.curr_obs = self.env.reset()
         self.solver = solver
         self.debug = debug
@@ -122,16 +127,7 @@ class AIPlan4GridAgent:
         from grid2op.PlotGrid import PlotMatplot
 
         plot_helper = PlotMatplot(self.env.observation_space)
-        obs = self.env.reset()
-        plot_helper.plot_obs(obs)
-        plt.show()
-
-    def display_lastObs(self):
-        import matplotlib.pyplot as plt
-        from grid2op.PlotGrid import PlotMatplot
-
-        plot_helper = PlotMatplot(self.env.observation_space)
-        plot_helper.plot_obs(self.last_obs)
+        plot_helper.plot_obs(self.curr_obs)
         plt.show()
 
     def get_states(self):
@@ -175,7 +171,6 @@ class AIPlan4GridAgent:
             ),
         }
 
-
         initial_states = {
             cfg.GENERATORS: self.curr_obs.gen_p,
             cfg.LOADS: self.curr_obs.load_p,
@@ -185,9 +180,6 @@ class AIPlan4GridAgent:
         }
 
         return initial_states, forecasted_states
-
-    def check_blackout(self):
-        return np.all(self.curr_obs.p_or == 0)
 
     def check_congestions(self):
         congested = np.any(self.curr_obs.rho >= 1)
@@ -202,8 +194,6 @@ class AIPlan4GridAgent:
         return congested
 
     def update_states(self):
-        if self.check_blackout():
-            raise RuntimeError("\tBlackout!")
         self.initial_states, self.forecasted_states = self.get_states()
 
     def up_actions_to_g2op_actions(self, up_actions):
@@ -280,6 +270,5 @@ class AIPlan4GridAgent:
         actions = self.get_actions(step)
         observation, reward, done, info = self.env.step(actions)
         self.curr_obs = observation
-        self.last_obs = self.curr_obs
         self.done = done
         return observation, reward, done, info
