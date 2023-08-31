@@ -12,7 +12,7 @@ import time
 
 
 def clean_logs():
-    """Remove recursively the log directory if it exists"""
+    """Remove recursively the log directory if it exists."""
     try:
         shutil.rmtree(cfg.LOG_DIR)
     except FileNotFoundError:
@@ -20,7 +20,7 @@ def clean_logs():
 
 
 def fill_parser(parser: argparse.ArgumentParser):
-    """Fill the given parser"""
+    """Fill the given parser."""
     parser.add_argument(
         "-c",
         "--config-file",
@@ -31,7 +31,7 @@ def fill_parser(parser: argparse.ArgumentParser):
 
 
 def parse_ini(ini_file_path: str) -> dict:
-    """Parse the given configuration file"""
+    """Parse the given configuration file."""
     config = configparser.ConfigParser()
     config.read(ini_file_path)
 
@@ -49,7 +49,7 @@ def parse_ini(ini_file_path: str) -> dict:
 
 
 def routine(agent: AIPlan4GridAgent):
-    """Routine for the agent"""
+    """Routine for the agent."""
     for i in range(STRATEGIC_HORIZON):
         print(f"\n* Episode {i}:")
         obs, reward, done, *_ = agent.progress(i)
@@ -62,6 +62,7 @@ def routine(agent: AIPlan4GridAgent):
 
 
 def main(args: argparse.Namespace):
+    """Main function."""
     try:
         if args.config_file is None:
             ini_file_path = pjoin(cfg.BASE_DIR, cfg.DEFAULT_INI_FILE)

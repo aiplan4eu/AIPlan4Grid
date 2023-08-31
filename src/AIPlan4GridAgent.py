@@ -7,10 +7,15 @@ from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
 import config as cfg
-from UnifiedPlanningProblem import UnifiedPlanningProblem
+from UnifiedPlanningProblem import UnifiedPlanningProblem, InstantaneousAction
+from grid2op.Action import ActionSpace
 
 
 class AIPlan4GridAgent:
+    """
+    This class implements the AIPlan4Grid agent
+    """
+
     def _get_grid_params(self):
         grid_params = {cfg.GENERATORS: {}, cfg.STORAGES: {}, cfg.TRANSMISSION_LINES: {}}
 
@@ -85,6 +90,11 @@ class AIPlan4GridAgent:
         return grid_params
 
     def get_ptdf(self):
+        """This function returns the PTDF matrix of the grid
+
+        Returns:
+            np.array: PTDF matrix
+        """
         net = self.grid
         _, ppci = _pd2ppc(net)
         ptdf = makePTDF(ppci["baseMVA"], ppci[cfg.BUS], ppci["branch"])
@@ -123,6 +133,7 @@ class AIPlan4GridAgent:
         self.debug = debug
 
     def display_grid(self):
+        """Display the current state of the grid."""
         import matplotlib.pyplot as plt
         from grid2op.PlotGrid import PlotMatplot
 
@@ -130,7 +141,12 @@ class AIPlan4GridAgent:
         plot_helper.plot_obs(self.curr_obs)
         plt.show()
 
-    def get_states(self):
+    def get_states(self) -> tuple[dict[str, np.array], dict[str, np.array]]:
+        """This function returns the initial states and the forecasted states of the grid.
+
+        Returns:
+            tuple[dict[str, np.array], dict[str, np.array]]: initial states and forecasted states
+        """
         do_nothing_action = self.env.action_space({})
 
         simulated_observations = [self.curr_obs.simulate(do_nothing_action)[0]]
@@ -181,7 +197,12 @@ class AIPlan4GridAgent:
 
         return initial_states, forecasted_states
 
-    def check_congestions(self):
+    def check_congestions(self) -> bool:
+        """This function checks if there is a congestion on the grid.
+
+        Returns:
+            bool: True if there is a congestion, False otherwise
+        """
         congested = np.any(self.curr_obs.rho >= 1)
         if congested:
             print("\tCongestion detected!")
@@ -194,9 +215,23 @@ class AIPlan4GridAgent:
         return congested
 
     def update_states(self):
+        """This function updates the initial states and the forecasted states of the grid."""
         self.initial_states, self.forecasted_states = self.get_states()
 
-    def up_actions_to_g2op_actions(self, up_actions):
+    def up_actions_to_g2op_actions(
+        self, up_actions: list[InstantaneousAction]
+    ) -> dict[str, list[tuple[int, float]]]:
+        """This function converts the actions of the UP problem to the actions of the grid2op environment.
+
+        Args:
+            up_actions (list[str]): list of actions of the UP problem, obtained by solving it with the `UnifiedPlanningProblem` class
+
+        Raises:
+            RuntimeError: if the action type is not valid, it should be either prod_target or storage_target
+
+        Returns:
+            dict[str, list[tuple[int, float]]]: transposed actions of the UP problem to the grid2op environment
+        """
         # first we create the dict that will be returned
         g2op_actions = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
 
@@ -239,7 +274,15 @@ class AIPlan4GridAgent:
 
         return g2op_actions
 
-    def get_actions(self, step: int):
+    def get_actions(self, step: int) -> ActionSpace:
+        """This function returns the actions to perform on the grid.
+
+        Args:
+            step (int): current step of the simulation
+
+        Returns:
+            ActionSpace: g2op actions to perform on the grid
+        """
         self.update_states()
         if self.check_congestions() == False:
             print("\tNo congestion detected, no need to solve UP problem.")
@@ -266,7 +309,15 @@ class AIPlan4GridAgent:
         g2op_actions = self.up_actions_to_g2op_actions(up_plan)
         return self.env.action_space(g2op_actions)
 
-    def progress(self, step: int):
+    def progress(self, step: int) -> tuple[np.array, float, bool, dict]:
+        """This function performs one step of the simulation.
+
+        Args:
+            step (int): current step of the simulation
+
+        Returns:
+            tuple[np.array, float, bool, dict]: respectively the observation, the reward, the done flag and the info dict
+        """
         actions = self.get_actions(step)
         observation, reward, done, info = self.env.step(actions)
         self.curr_obs = observation

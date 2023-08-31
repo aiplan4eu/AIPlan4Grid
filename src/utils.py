@@ -7,7 +7,8 @@ import numpy as np
 import config as cfg
 
 
-def verbose_print(verbose: bool):
+def verbose_print(verbose: bool) -> callable:
+    """Return a function that prints only if verbose is True."""
     if verbose:
 
         def _vprint(*args, **kwargs):
@@ -19,6 +20,7 @@ def verbose_print(verbose: bool):
 
 
 def compute_size_array(array: np.ndarray) -> int:
+    """Compute the size of an numpy array."""
     size = 1
     for i in array.shape:
         size *= i
@@ -26,7 +28,7 @@ def compute_size_array(array: np.ndarray) -> int:
 
 
 def setup_logger(name, log_dir, level=0):
-    """To setup as many loggers as you want"""
+    """To setup as many loggers as you want."""
     logging.basicConfig(
         filename=pjoin(log_dir, cfg.OUT_FILE),
         format="| %(levelname)-6s| %(asctime)s | %(message)s",

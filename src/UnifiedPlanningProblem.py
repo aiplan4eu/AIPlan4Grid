@@ -16,6 +16,8 @@ from utils import compute_size_array, setup_logger
 
 
 class UnifiedPlanningProblem:
+    """Unified planning problem class that modelled the grid stability problem as a planning problem."""
+
     def __init__(
         self,
         operational_horizon: int,
@@ -61,7 +63,7 @@ class UnifiedPlanningProblem:
         self.create_problem()
 
     def create_fluents(self):
-        # Creating problem 'variables' so called fluents in PDDL
+        """Create problem 'variables' so called fluents in PDDL."""
         self.pgen = np.array(
             [
                 [
@@ -139,7 +141,12 @@ class UnifiedPlanningProblem:
             ]
         )
 
-    def create_gen_actions(self) -> dict:
+    def create_gen_actions(self) -> dict[str, float]:
+        """Create actions for generators.
+
+        Returns:
+            dict[str, float]: dictionary of generators actions and their costs
+        """
         actions_costs = {}
 
         # Creating actions
@@ -267,7 +274,12 @@ class UnifiedPlanningProblem:
                 # TODO
         return actions_costs
 
-    def create_stor_actions(self) -> dict:
+    def create_stor_actions(self) -> dict[str, float]:
+        """Create actions for storages.
+
+        Returns:
+            dict[str, float]: dictionary of storages actions and their costs
+        """
         self.pstor_actions = []
         actions_costs = {}
 
@@ -431,12 +443,14 @@ class UnifiedPlanningProblem:
         return actions_costs
 
     def create_actions(self):
+        """Create actions for the problem."""
         gen_costs = self.create_gen_actions()
         stor_costs = self.create_stor_actions()
 
         self.actions_costs = {**gen_costs, **stor_costs}
 
     def create_problem(self):
+        """Create the problem to solve."""
         problem = Problem(f"GridStability_{self.id}")
 
         # add fluents
@@ -504,6 +518,7 @@ class UnifiedPlanningProblem:
         self.problem = problem
 
     def save_problem(self):
+        """Save the problem in .upp and .pddl formats in a temporary directory."""
         upp_file = "problem_" + str(self.id) + cfg.UPP_SUFFIX
         pddl_file = "problem_" + str(self.id) + cfg.PDDL_SUFFIX
         pddl_domain_file = "problem_domain_" + str(self.id) + cfg.PDDL_SUFFIX
@@ -524,7 +539,15 @@ class UnifiedPlanningProblem:
         pddl_writer.write_problem(pjoin(self.log_dir, pddl_file))
         pddl_writer.write_domain(pjoin(self.log_dir, pddl_domain_file))
 
-    def solve(self, simulate=False):
+    def solve(self, simulate=False) -> list[InstantaneousAction]:
+        """Solve the problem.
+
+        Args:
+            simulate (bool, optional): If True, simulate the founded plan. Defaults to False.
+
+        Returns:
+            list[InstantaneousAction]: list of actions of the plan
+        """
         with OneshotPlanner(
             name=self.solver,
             problem_kind=self.problem.kind,
