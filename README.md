@@ -11,7 +11,7 @@ pip install -r requirements/requirements.txt
 ## Main usage
 
 ```bash
-python plan4grid -h
+python -m plan4grid -h
 usage: [-h] [-c CONFIG_FILE]
 
 optional arguments:

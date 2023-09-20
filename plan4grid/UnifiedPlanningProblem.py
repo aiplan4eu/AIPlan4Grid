@@ -550,7 +550,8 @@ class UnifiedPlanningProblem:
         """
         with OneshotPlanner(
             name=self.solver,
-            params={"params": "-s WAStar -h hrmax"},
+            problem_kind=self.problem.kind,
+            optimality_guarantee=PlanGenerationResultStatus.SOLVED_OPTIMALLY,
         ) as planner:
             output = planner.solve(self.problem)
             plan = output.plan
