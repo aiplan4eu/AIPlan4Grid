@@ -29,9 +29,8 @@ class AIPlan4GridAgent:
         grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN] = self.env.gen_max_ramp_down
         grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW] = self.env.gen_cost_per_MW
         grid_params[cfg.GENERATORS][cfg.SLACK] = self.grid.gen[cfg.SLACK].to_numpy()
-        # TODO: bus number can change, has to be taken from observation
         grid_params[cfg.GENERATORS][cfg.BUS] = self.grid.gen[cfg.BUS].to_numpy()
-        # TODO: get sub id as well in case several bus are used (as for storage)
+        grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID] = self.env.gen_to_subid
 
         # Storages parameters
         grid_params[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
@@ -131,6 +130,7 @@ class AIPlan4GridAgent:
         self.ptdf = self.get_ptdf()
         # TODO move to obs and perform test in case there is bus 2 that is used as well.
         self.curr_obs = self.env.reset()
+        self.time_step = self.curr_obs.delta_time  # time step in minutes
         self.solver = solver
         self.debug = debug
 
@@ -234,7 +234,7 @@ class AIPlan4GridAgent:
         """
         # first we create the dict that will be returned
         g2op_actions = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
-
+        # we fetch the
         # then we parse the up actions
         for action in up_actions:
             action = action.action.name
@@ -265,6 +265,9 @@ class AIPlan4GridAgent:
             # we add the action to the dict
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[cfg.REDISPATCH].append((id, action_value))
+                # don't forget to add the opposite action for the slack bus
+                # fetch the slack bus id
+
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[cfg.SET_STORAGE].append((id, action_value))
             else:

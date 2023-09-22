@@ -21,6 +21,7 @@ class UnifiedPlanningProblem:
     def __init__(
         self,
         operational_horizon: int,
+        time_step: int,
         discretization: int,
         ptdf: list[list],
         grid_params: dict,
@@ -33,6 +34,7 @@ class UnifiedPlanningProblem:
         get_environment().credits_stream = None
 
         self.operational_horizon = operational_horizon
+        self.time_step = time_step
         self.discretization = discretization
         self.ptdf = ptdf
         self.grid_params = grid_params
@@ -309,22 +311,24 @@ class UnifiedPlanningProblem:
                 continue
             for i in range(soc_min, soc_max + 1):
                 if not (
-                    # the max charge/discharge power in grid2Op are given from the grid referencial not from the storage asset.
-                    # TODO get time step size from grid2Op
                     self.initial_states[cfg.STORAGES][stor_id]
-                    >= i - pmax_charge * 5 / 60 / charging_efficiency
+                    >= i - pmax_charge * self.time_step / 60 / charging_efficiency
                     and self.initial_states[cfg.STORAGES][stor_id]
-                    <= i + pmax_discharge * 5 / 60 * discharging_efficiency
+                    <= i + pmax_discharge * self.time_step / 60 * discharging_efficiency
                 ):
                     continue
 
                 target_delta_soc = i - self.initial_states[cfg.STORAGES][stor_id]
                 if target_delta_soc > 0:
-                    target_pcharge = (60 / 5) * target_delta_soc / charging_efficiency
+                    target_pcharge = (
+                        (60 / self.time_step) * target_delta_soc / charging_efficiency
+                    )
                     target_pdischarge = 0
                 elif target_delta_soc < 0:
                     target_pdischarge = (
-                        -(60 / 5) * target_delta_soc * discharging_efficiency
+                        -(60 / self.time_step)
+                        * target_delta_soc
+                        * discharging_efficiency
                     )
                     target_pcharge = 0
                 else:

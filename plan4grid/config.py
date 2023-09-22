@@ -18,6 +18,7 @@ SCENARIO_ID = "scenario_id"
 SLACK = "slack"
 BUS = "bus"
 STORAGE_TO_SUBID = "storage_to_subid"
+GEN_TO_SUBID = "gen_to_subid"
 
 GENERATORS = "generators"
 PMIN = "pmin"

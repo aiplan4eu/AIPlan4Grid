@@ -2,7 +2,7 @@
 
 ## Requirements
 
-Python 3.9.0 or higher.
+Python 3.10.0 or higher is required.
 
 ```bash
 pip install -r requirements/requirements.txt
@@ -34,6 +34,7 @@ python -m sphinx docs/source docs/build/
 Build and install the project with the following command:
 
 ```bash
+python -m pip install -r requirements/requirements_build.txt
 chmod +x build_pkg.sh
 ./build_pkg.sh
 ```
