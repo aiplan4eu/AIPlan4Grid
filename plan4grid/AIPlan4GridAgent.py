@@ -18,48 +18,74 @@ class AIPlan4GridAgent:
     This class implements the AIPlan4Grid agent
     """
 
-    def _get_grid_params(self):
-        grid_params = {cfg.GENERATORS: {}, cfg.STORAGES: {}, cfg.TRANSMISSION_LINES: {}}
+    def get_static_properties(self) -> dict:
+        """This function returns the static properties of the grid."""
+        static_properties = {cfg.GENERATORS: {}, cfg.STORAGES: {}}
 
         # Generators parameters
-        grid_params[cfg.GENERATORS][cfg.PMIN] = self.env.gen_pmin
-        grid_params[cfg.GENERATORS][cfg.PMAX] = self.env.gen_pmax
-        grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE] = self.env.gen_redispatchable
-        grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP] = self.env.gen_max_ramp_up
-        grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN] = self.env.gen_max_ramp_down
-        grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW] = self.env.gen_cost_per_MW
-        grid_params[cfg.GENERATORS][cfg.SLACK] = self.grid.gen[cfg.SLACK].to_numpy()
-        grid_params[cfg.GENERATORS][cfg.BUS] = self.grid.gen[cfg.BUS].to_numpy()
-        grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID] = self.env.gen_to_subid
+        static_properties[cfg.GENERATORS][cfg.PMIN] = self.env.gen_pmin
+        static_properties[cfg.GENERATORS][cfg.PMAX] = self.env.gen_pmax
+        static_properties[cfg.GENERATORS][
+            cfg.REDISPATCHABLE
+        ] = self.env.gen_redispatchable
+        static_properties[cfg.GENERATORS][cfg.MAX_RAMP_UP] = self.env.gen_max_ramp_up
+        static_properties[cfg.GENERATORS][
+            cfg.MAX_RAMP_DOWN
+        ] = self.env.gen_max_ramp_down
+        static_properties[cfg.GENERATORS][
+            cfg.GEN_COST_PER_MW
+        ] = self.env.gen_cost_per_MW
+        static_properties[cfg.GENERATORS][cfg.SLACK] = self.env.backend._grid.gen[
+            cfg.SLACK
+        ].to_numpy()
+        if len(np.where(static_properties[cfg.GENERATORS][cfg.SLACK] == True)[0]) > 1:
+            raise RuntimeError(
+                "There should be only one slack bus, but there are several."
+            )
+        static_properties[cfg.GENERATORS][cfg.GEN_TO_SUBID] = self.env.gen_to_subid
 
         # Storages parameters
-        grid_params[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
-        grid_params[cfg.STORAGES][cfg.EMIN] = self.env.storage_Emin
-        grid_params[cfg.STORAGES][cfg.LOSS] = self.env.storage_loss
-        grid_params[cfg.STORAGES][
+        static_properties[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
+        static_properties[cfg.STORAGES][cfg.EMIN] = self.env.storage_Emin
+        static_properties[cfg.STORAGES][cfg.LOSS] = self.env.storage_loss
+        static_properties[cfg.STORAGES][
             cfg.CHARGING_EFFICIENCY
         ] = self.env.storage_charging_efficiency
-        grid_params[cfg.STORAGES][
+        static_properties[cfg.STORAGES][
             cfg.DISCHARGING_EFFICIENCY
         ] = self.env.storage_discharging_efficiency
-        grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD] = self.env.storage_max_p_prod
-        grid_params[cfg.STORAGES][
+        static_properties[cfg.STORAGES][
+            cfg.STORAGE_MAX_P_PROD
+        ] = self.env.storage_max_p_prod
+        static_properties[cfg.STORAGES][
             cfg.STORAGE_MAX_P_ABSORB
         ] = self.env.storage_max_p_absorb
-        grid_params[cfg.STORAGES][
+        static_properties[cfg.STORAGES][
             cfg.STORAGE_COST_PER_MW
         ] = self.env.storage_marginal_cost
-        grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID] = self.env.storage_to_subid
+        static_properties[cfg.STORAGES][
+            cfg.STORAGE_TO_SUBID
+        ] = self.env.storage_to_subid
 
-        # Lines parameters
-        power_lines = self.grid.line[[cfg.FROM_BUS, cfg.TO_BUS]]
-        transfo_lines = self.grid.trafo[[cfg.HV_BUS, cfg.LV_BUS]]
+        return static_properties
+
+    def get_mutable_properties(self):
+        """This function returns the mutable properties of the grid which depends on the current observation."""
+        mutable_properties = {cfg.TRANSMISSION_LINES: {}}
+
+        # Generators parameters
+        self.static_properties[cfg.GENERATORS][cfg.GEN_BUS] = self.curr_obs.gen_bus
+
+        # Storages parameters
+        self.static_properties[cfg.STORAGES][
+            cfg.STORAGE_BUS
+        ] = self.curr_obs.storage_bus
 
         max_flows = np.array(
             (
                 (
                     self.env.backend.lines_or_pu_to_kv
-                    * self.env.backend.get_thermal_limit()
+                    * self.curr_obs.thermal_limit
                     / 1000
                 )
                 * sqrt(3)  # triple phase
@@ -68,27 +94,25 @@ class AIPlan4GridAgent:
             dtype=float,
         )  # from Ampere to MW
 
-        # TODO move to observable
-        for tl_idx in power_lines.index:
-            grid_params[cfg.TRANSMISSION_LINES][tl_idx] = {
-                cfg.FROM_BUS: power_lines.at[tl_idx, cfg.FROM_BUS],
-                cfg.TO_BUS: power_lines.at[tl_idx, cfg.TO_BUS],
-            }
-        for tl_idx in transfo_lines.index:
-            grid_params[cfg.TRANSMISSION_LINES][len(power_lines.index) + tl_idx] = {
-                cfg.FROM_BUS: transfo_lines.at[tl_idx, cfg.HV_BUS],
-                cfg.TO_BUS: transfo_lines.at[tl_idx, cfg.LV_BUS],
+        nb_lines = self.curr_obs.n_line
+        or_idx = self.curr_obs.line_or_to_subid
+        ex_idx = self.curr_obs.line_ex_to_subid
+
+        for i in range(nb_lines):
+            mutable_properties[cfg.TRANSMISSION_LINES][i] = {
+                cfg.FROM_BUS: or_idx[i],
+                cfg.TO_BUS: ex_idx[i],
             }
 
-        for tl_index in grid_params[cfg.TRANSMISSION_LINES].keys():
-            grid_params[cfg.TRANSMISSION_LINES][tl_index][
+        for tl_id in mutable_properties[cfg.TRANSMISSION_LINES].keys():
+            mutable_properties[cfg.TRANSMISSION_LINES][tl_id][
                 cfg.STATUS
-            ] = self.env.backend.get_line_status()[tl_index]
-            grid_params[cfg.TRANSMISSION_LINES][tl_index][cfg.MAX_FLOW] = max_flows[
-                tl_index
+            ] = self.curr_obs.line_status[tl_id]
+            mutable_properties[cfg.TRANSMISSION_LINES][tl_id][cfg.MAX_FLOW] = max_flows[
+                tl_id
             ]
 
-        return grid_params
+        return mutable_properties
 
     def get_ptdf(self):
         """This function returns the PTDF matrix of the grid
@@ -96,7 +120,7 @@ class AIPlan4GridAgent:
         Returns:
             np.array: PTDF matrix
         """
-        net = self.grid
+        net = self.env.backend._grid
         _, ppci = _pd2ppc(net)
         ptdf = makePTDF(ppci["baseMVA"], ppci[cfg.BUS], ppci["branch"])
         return ptdf
@@ -106,7 +130,6 @@ class AIPlan4GridAgent:
         env: Environment,
         scenario_id: int,
         operational_horizon: int,
-        discretization: int,
         solver: str,
         debug: bool = False,
     ):
@@ -124,13 +147,11 @@ class AIPlan4GridAgent:
         self.env = env
         self.env.set_id(scenario_id)
         self.operational_horizon = operational_horizon
-        self.discretization = discretization
-        self.grid = self.env.backend._grid
-        self.grid_params = self._get_grid_params()
-        self.ptdf = self.get_ptdf()
-        # TODO move to obs and perform test in case there is bus 2 that is used as well.
+        self.static_properties = self.get_static_properties()
         self.curr_obs = self.env.reset()
         self.time_step = self.curr_obs.delta_time  # time step in minutes
+        self.mutable_properties = self.get_mutable_properties()
+        self.ptdf = self.get_ptdf()
         self.solver = solver
         self.debug = debug
 
@@ -214,6 +235,29 @@ class AIPlan4GridAgent:
                 )
         return congested
 
+    def check_topology(self) -> bool:
+        """This function checks if the topology of the grid has changed.
+
+        Returns:
+            bool: True if the topology has changed, False otherwise
+        """
+        initial_topology = self.env.reset().connectivity_matrix()
+        current_topology = self.curr_obs.connectivity_matrix()
+        topology_unchanged = np.array_equal(initial_topology, current_topology)
+        if not topology_unchanged:
+            print("\tTopology has changed!")
+            disconnected_lines = np.where(initial_topology & ~current_topology)[0]
+            connected_lines = np.where(~initial_topology & current_topology)[0]
+            for line in disconnected_lines:
+                print(f"\t\tLine {line} has been disconnected.")
+            for line in connected_lines:
+                print(f"\t\tLine {line} has been connected.")
+            print("\tUpdating PTDF matrix and mutable properties...")
+            self.ptdf = self.get_ptdf()
+            self.mutable_properties = self.get_mutable_properties()
+            print("\tDone!")
+        return not topology_unchanged
+
     def update_states(self):
         """This function updates the initial states and the forecasted states of the grid."""
         self.initial_states, self.forecasted_states = self.get_states()
@@ -234,7 +278,6 @@ class AIPlan4GridAgent:
         """
         # first we create the dict that will be returned
         g2op_actions = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
-        # we fetch the
         # then we parse the up actions
         for action in up_actions:
             action = action.action.name
@@ -262,14 +305,18 @@ class AIPlan4GridAgent:
             # we compute the value of the action
             action_value = value - current_value
 
+            # fetch the slack bus id
+            slack_id = np.where(self.static_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
+
             # we add the action to the dict
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[cfg.REDISPATCH].append((id, action_value))
                 # don't forget to add the opposite action for the slack bus
-                # fetch the slack bus id
-
+                g2op_actions[cfg.REDISPATCH].append((slack_id, -action_value))
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[cfg.SET_STORAGE].append((id, action_value))
+                # again don't forget to add slack action
+                g2op_actions[cfg.REDISPATCH].append((slack_id, -action_value))
             else:
                 raise RuntimeError(
                     "The action type is not valid, it should be either prod_target or storage_target"
@@ -287,15 +334,17 @@ class AIPlan4GridAgent:
             ActionSpace: g2op actions to perform on the grid
         """
         self.update_states()
-        if self.check_congestions() == False:
-            print("\tNo congestion detected, no need to solve UP problem.")
+        if self.check_congestions() == False and self.check_topology() == False:
+            print(
+                "\tNo congestion and no topology change detected, no need to solve UP problem."
+            )
             return self.env.action_space({})
         print("\tCreating UP problem...")
+        grid_params = {**self.static_properties, **self.mutable_properties}
         upp = UnifiedPlanningProblem(
             self.operational_horizon,
-            self.discretization,
             self.ptdf,
-            self.grid_params,
+            grid_params,
             self.initial_states,
             self.forecasted_states,
             self.solver,

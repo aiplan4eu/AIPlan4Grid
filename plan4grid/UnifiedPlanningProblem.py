@@ -3,7 +3,6 @@ from os.path import join as pjoin
 
 import numpy as np
 import unified_planning as up
-from grid2op.Observation import BaseObservation
 from unified_planning.engines import PlanGenerationResultStatus
 from unified_planning.engines.sequential_simulator import (
     evaluate_quality_metric,
@@ -22,20 +21,17 @@ class UnifiedPlanningProblem:
         self,
         operational_horizon: int,
         time_step: int,
-        discretization: int,
         ptdf: list[list],
         grid_params: dict,
         initial_states: dict,
         forecasted_states: dict,
         solver: str,
-        obs: BaseObservation,
         problem_id: int,
     ):
         get_environment().credits_stream = None
 
         self.operational_horizon = operational_horizon
         self.time_step = time_step
-        self.discretization = discretization
         self.ptdf = ptdf
         self.grid_params = grid_params
         self.nb_gens = len(grid_params[cfg.GENERATORS][cfg.PMAX])
@@ -43,9 +39,8 @@ class UnifiedPlanningProblem:
         self.initial_states = initial_states
         self.forecasted_states = forecasted_states
         self.nb_transmission_lines = len(grid_params[cfg.TRANSMISSION_LINES])
-        self.slack_gens = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0]
+        self.slack_id = np.where(grid_params[cfg.GENERATORS][cfg.SLACK] == True)[0][0]
         self.solver = solver
-        self.obs = obs
         self.id = problem_id
 
         self.nb_digits = 6
@@ -163,7 +158,7 @@ class UnifiedPlanningProblem:
                 pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
                 pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
 
-                for i in range(pmin, pmax + 1, self.discretization):
+                for i in range(pmin, pmax + 1, 1):
                     if not (
                         float(self.initial_states[cfg.GENERATORS][gen_id])
                         >= i - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
@@ -264,14 +259,10 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                         )
-                    if len(self.slack_gens) > 1:
-                        raise ("More than one slack generator!")
-                    else:
-                        action.add_decrease_effect(
-                            self.pgen[self.slack_gens[-1]][0],
-                            i
-                            - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
-                        )
+                    action.add_decrease_effect(
+                        self.pgen[self.slack_id][0],
+                        i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
+                    )
                 # for horizon > 1
                 # TODO
         return actions_costs
@@ -300,16 +291,16 @@ class UnifiedPlanningProblem:
             discharging_efficiency = self.grid_params[cfg.STORAGES][
                 cfg.DISCHARGING_EFFICIENCY
             ][stor_id]
-            connected_bus = int(self.obs.storage_bus[stor_id]) * int(
-                self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][stor_id]
-            )
+            connected_bus = int(
+                self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][stor_id]
+            ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][stor_id])
 
             if charging_efficiency == 0 or discharging_efficiency == 0:
                 self.logger.warning(
                     f"Storage: {stor_id} has 0 charge or discharge efficiency, no action created!"
                 )
                 continue
-            for i in range(soc_min, soc_max + 1):
+            for i in np.linspace(soc_min, soc_max + 1, 2 * (soc_max - soc_min)):
                 if not (
                     self.initial_states[cfg.STORAGES][stor_id]
                     >= i - pmax_charge * self.time_step / 60 / charging_efficiency
@@ -367,20 +358,6 @@ class UnifiedPlanningProblem:
                 action.add_effect(self.pstor[stor_id][0], i)
 
                 for k in range(self.nb_transmission_lines):
-                    # not necessary if one time step
-                    # diff_charge = float(
-                    #    round(
-                    #        self.ptdf[k][connected_bus]*target_pcharge,
-                    #        self.nb_digits,
-                    #        )
-                    # )
-                    # diff_discharge = float(
-                    #    round(
-                    #        -self.ptdf[k][connected_bus]*target_pdischare,
-                    #        self.nb_digits,
-                    #        )
-                    # )
-
                     diff_flow = float(
                         round(
                             self.ptdf[k][connected_bus]
@@ -389,8 +366,6 @@ class UnifiedPlanningProblem:
                         )
                     )
                     action.add_increase_effect(self.flows[k][0], diff_flow)
-                    # action.add_increase_effect(self.flows[k][0],diff_discharge,deltaSOC_withforecasted<0) not necessay if one time step
-
                     action.add_effect(
                         self.congestions[k][0],
                         True,
@@ -413,7 +388,6 @@ class UnifiedPlanningProblem:
                             ),
                         ),
                     )
-
                     action.add_effect(
                         self.congestions[k][0],
                         False,
@@ -436,14 +410,10 @@ class UnifiedPlanningProblem:
                             ),
                         ),
                     )
-
-                if len(self.slack_gens) > 1:
-                    raise ("More than one slack generator!")
-                else:
-                    action.add_decrease_effect(
-                        self.pgen[self.slack_gens[-1]][0],
-                        -target_pcharge + target_pdischarge,
-                    )
+                action.add_decrease_effect(
+                    self.pgen[self.slack_id][0],
+                    -target_pcharge + target_pdischarge,
+                )
         return actions_costs
 
     def create_actions(self):
@@ -592,7 +562,7 @@ class UnifiedPlanningProblem:
                                 f"\tcongestions new value: {[[state_test.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tgen slack new value: {[float(state_test.get_value(self.pgen_exp[self.slack_gens[0]][t]).constant_value()) for t in range(self.operational_horizon)]}"
+                                f"\tgen slack new value: {[float(state_test.get_value(self.pgen_exp[self.slack_id[0]][t]).constant_value()) for t in range(self.operational_horizon)]}"
                             )
                             minimize_cost_value = evaluate_quality_metric(
                                 simulator,
