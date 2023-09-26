@@ -545,22 +545,22 @@ class UnifiedPlanningProblem:
                         states = [initial_state]
                         for act in plan.actions:
                             self.logger.debug(f"\taction: {act}")
-                            state_test = simulator.apply(states[-1], act)
-                            states.append(state_test)
+                            new_state = simulator.apply(states[-1], act)
+                            states.append(new_state)
                             self.logger.debug(
-                                f"\tgens new value: {[[float(state_test.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.operational_horizon)]}"
+                                f"\tgens new value: {[[float(new_state.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tstorages new value: {[[float(state_test.get_value(self.psto_exp[s][t]).constant_value()) for s in range(self.nb_storages)] for t in range(self.operational_horizon)]}"
+                                f"\tstorages new value: {[[float(new_state.get_value(self.psto_exp[s][t]).constant_value()) for s in range(self.nb_storages)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tflows new value: {[[float(state_test.get_value(self.flows_exp[k][t]).constant_value()) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
+                                f"\tflows new value: {[[float(new_state.get_value(self.flows_exp[k][t]).constant_value()) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tcongestions new value: {[[state_test.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
+                                f"\tcongestions new value: {[[new_state.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tgen slack new value: {[float(state_test.get_value(self.pgen_exp[self.slack_id][t]).constant_value()) for t in range(self.operational_horizon)]}"
+                                f"\tgen slack new value: {[float(new_state.get_value(self.pgen_exp[self.slack_id][t]).constant_value()) for t in range(self.operational_horizon)]}"
                             )
                             minimize_cost_value = evaluate_quality_metric(
                                 simulator,
@@ -569,7 +569,7 @@ class UnifiedPlanningProblem:
                                 initial_state,
                                 act.action,
                                 act.actual_parameters,
-                                state_test,
+                                new_state,
                             )
                             self.logger.debug(f"\tcost: {float(minimize_cost_value)}\n")
                 return plan.actions

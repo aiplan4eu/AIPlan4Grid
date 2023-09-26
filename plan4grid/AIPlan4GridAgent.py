@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from grid2op.Action import ActionSpace
 from grid2op.Environment import Environment
+from grid2op.Observation import BaseObservation
 from grid2op.PlotGrid import PlotMatplot
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
@@ -279,6 +280,9 @@ class AIPlan4GridAgent:
         """
         # first we create the dict that will be returned
         g2op_actions = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
+        slack_actions = []
+        # fetch the slack bus id
+        slack_id = np.where(self.static_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
         # then we parse the up actions
         for action in up_actions:
             action = action.action.name
@@ -306,23 +310,19 @@ class AIPlan4GridAgent:
             # we compute the value of the action
             action_value = value - current_value
 
-            # fetch the slack bus id
-            slack_id = np.where(self.static_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
-
             # we add the action to the dict
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[cfg.REDISPATCH].append((id, action_value))
-                # don't forget to add the opposite action for the slack bus
-                g2op_actions[cfg.REDISPATCH].append((slack_id, -action_value))
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[cfg.SET_STORAGE].append((id, action_value))
-                # again don't forget to add slack action
-                g2op_actions[cfg.REDISPATCH].append((slack_id, -action_value))
             else:
                 raise RuntimeError(
                     "The action type is not valid, it should be either prod_target or storage_target"
                 )
-
+            slack_actions.append((slack_id, -action_value))
+        g2op_actions[cfg.REDISPATCH].append(
+            (slack_id, sum([v[1] for v in slack_actions]))
+        )
         return g2op_actions
 
     def get_actions(self, step: int) -> ActionSpace:
@@ -362,17 +362,19 @@ class AIPlan4GridAgent:
         g2op_actions = self.up_actions_to_g2op_actions(up_plan)
         return self.env.action_space(g2op_actions)
 
-    def progress(self, step: int) -> tuple[np.array, float, bool, dict]:
+    def progress(self, step: int) -> tuple[BaseObservation, float, bool, dict]:
         """This function performs one step of the simulation.
 
         Args:
             step (int): current step of the simulation
 
         Returns:
-            tuple[np.array, float, bool, dict]: respectively the observation, the reward, the done flag and the info dict
+            tuple[BaseObservation, float, bool, dict]: respectively the observation, the reward, the done flag and the info dict
         """
         actions = self.get_actions(step)
+        # print("\tPerforming actions:")
+        # print(f"\t{actions}")
         observation, reward, done, info = self.env.step(actions)
+        # print(observation.p_or[17])
         self.curr_obs = observation
-        self.done = done
         return observation, reward, done, info
