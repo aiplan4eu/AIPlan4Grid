@@ -5,12 +5,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEFAULT_INI_FILE = "parameters.ini"
 PARAMETERS = "Parameters"
-ENV_NAME = "env_name"
 OPERATIONAL_HORIZON = "operational_horizon"
 TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
 SOLVER = "solver"
-SCENARIO_ID = "scenario_id"
 
 # DO NOT CHANGE THE FOLLOWING STRINGS (USED BY THE BACKEND)
 ###########################################################

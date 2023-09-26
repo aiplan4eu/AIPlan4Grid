@@ -22,12 +22,28 @@ def clean_logs():
 def fill_parser(parser: argparse.ArgumentParser):
     """Fill the given parser."""
     parser.add_argument(
+        "-e",
+        "--env-name",
+        help="Name of the environment to use.",
+        required=True,
+    )
+    parser.add_argument(
+        "-s",
+        "--scenario-id",
+        help="ID of the scenario to use.",
+        required=True,
+    )
+    parser.add_argument(
         "-c",
         "--config-file",
         help="Configuration file path. If not given, the default configuration file will be used.",
         default=None,
         required=False,
     )
+    parser.usage = (
+        "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>]"
+    )
+    parser.description = "Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used."
 
 
 def parse_ini(ini_file_path: str) -> dict:
@@ -37,12 +53,10 @@ def parse_ini(ini_file_path: str) -> dict:
 
     parameters_section = config[cfg.PARAMETERS]
     parameters = {
-        cfg.ENV_NAME: parameters_section[cfg.ENV_NAME],
         cfg.OPERATIONAL_HORIZON: int(parameters_section[cfg.OPERATIONAL_HORIZON]),
         cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
-        cfg.SCENARIO_ID: int(parameters_section[cfg.SCENARIO_ID]),
     }
     return parameters
 
@@ -71,13 +85,13 @@ def main(args: argparse.Namespace):
         global STRATEGIC_HORIZON
         STRATEGIC_HORIZON = parameters[cfg.STRATEGIC_HORIZON]
         env = grid2op.make(
-            dataset=parameters[cfg.ENV_NAME],
+            dataset=args.env_name,
             test=True,
             backend=PandaPowerBackend(),
         )
         agent = AIPlan4GridAgent(
             env=env,
-            scenario_id=parameters[cfg.SCENARIO_ID],
+            scenario_id=int(args.scenario_id),
             operational_horizon=parameters[cfg.OPERATIONAL_HORIZON],
             solver=parameters[cfg.SOLVER],
             debug=True,
