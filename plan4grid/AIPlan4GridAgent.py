@@ -146,12 +146,12 @@ class AIPlan4GridAgent:
 
         self.env = env
         self.env.set_id(scenario_id)
+        self.curr_obs = self.env.reset()
         self.operational_horizon = operational_horizon
         self.static_properties = self.get_static_properties()
-        self.curr_obs = self.env.reset()
-        self.time_step = self.curr_obs.delta_time  # time step in minutes
         self.mutable_properties = self.get_mutable_properties()
         self.ptdf = self.get_ptdf()
+        self.time_step = self.curr_obs.delta_time  # time step in minutes
         self.solver = solver
         self.debug = debug
 
@@ -231,7 +231,7 @@ class AIPlan4GridAgent:
             for line in congested_lines:
                 print(
                     f"\t\tLine {line} is congested with a flow of {self.curr_obs.p_or[line]:.2f} MW,",
-                    f"but have a maximum flow of {self.grid_params[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]:.2f} MW",
+                    f"but have a maximum flow of {self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]:.2f} MW",
                 )
         return congested
 
