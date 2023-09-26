@@ -157,7 +157,9 @@ class UnifiedPlanningProblem:
             ):
                 pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
                 pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
-
+                connected_bus = int(
+                    self.grid_params[cfg.GENERATORS][cfg.GEN_BUS][gen_id]
+                ) * int(self.grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID][gen_id])
                 for i in range(pmin, pmax + 1, 1):
                     if not (
                         float(self.initial_states[cfg.GENERATORS][gen_id])
@@ -197,9 +199,7 @@ class UnifiedPlanningProblem:
                     for k in range(self.nb_transmission_lines):
                         diff = float(
                             round(
-                                self.ptdf[k][
-                                    self.grid_params[cfg.GENERATORS][cfg.BUS][gen_id]
-                                ]
+                                self.ptdf[k][connected_bus]
                                 * (
                                     i
                                     - float(

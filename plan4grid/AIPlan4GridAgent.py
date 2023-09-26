@@ -1,3 +1,4 @@
+from copy import deepcopy
 from math import atan, cos, sqrt
 from timeit import default_timer as timer
 
@@ -146,6 +147,7 @@ class AIPlan4GridAgent:
 
         self.env = env
         self.env.set_id(scenario_id)
+        self.initial_topology = deepcopy(self.env).reset().connectivity_matrix()
         self.curr_obs = self.env.reset()
         self.operational_horizon = operational_horizon
         self.static_properties = self.get_static_properties()
@@ -241,13 +243,12 @@ class AIPlan4GridAgent:
         Returns:
             bool: True if the topology has changed, False otherwise
         """
-        initial_topology = self.env.reset().connectivity_matrix()
         current_topology = self.curr_obs.connectivity_matrix()
-        topology_unchanged = np.array_equal(initial_topology, current_topology)
+        topology_unchanged = np.array_equal(self.initial_topology, current_topology)
         if not topology_unchanged:
             print("\tTopology has changed!")
-            disconnected_lines = np.where(initial_topology & ~current_topology)[0]
-            connected_lines = np.where(~initial_topology & current_topology)[0]
+            disconnected_lines = np.where(self.initial_topology & ~current_topology)[0]
+            connected_lines = np.where(~self.initial_topology & current_topology)[0]
             for line in disconnected_lines:
                 print(f"\t\tLine {line} has been disconnected.")
             for line in connected_lines:
@@ -343,12 +344,12 @@ class AIPlan4GridAgent:
         grid_params = {**self.static_properties, **self.mutable_properties}
         upp = UnifiedPlanningProblem(
             self.operational_horizon,
+            self.time_step,
             self.ptdf,
             grid_params,
             self.initial_states,
             self.forecasted_states,
             self.solver,
-            self.curr_obs,
             problem_id=step,
         )
         print(f"\tSaving UP problem in {cfg.LOG_DIR}")
