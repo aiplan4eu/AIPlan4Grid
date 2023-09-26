@@ -81,23 +81,23 @@ class UnifiedPlanningProblem:
             ]
         )
 
-        self.pstor = np.array(
+        self.psto = np.array(
             [
                 [
-                    Fluent(f"pstor_{stor_id}_{t}", RealType())
+                    Fluent(f"psto_{sto_id}_{t}", RealType())
                     for t in range(self.operational_horizon)
                 ]
-                for stor_id in range(self.nb_storages)
+                for sto_id in range(self.nb_storages)
             ]
         )
 
-        self.pstor_exp = np.array(
+        self.psto_exp = np.array(
             [
                 [
-                    FluentExp(self.pgen[stor_id][t])
+                    FluentExp(self.pgen[sto_id][t])
                     for t in range(self.operational_horizon)
                 ]
-                for stor_id in range(self.nb_storages)
+                for sto_id in range(self.nb_storages)
             ]
         )
 
@@ -197,7 +197,7 @@ class UnifiedPlanningProblem:
                     )
                     action.add_effect(self.pgen[gen_id][0], i)
                     for k in range(self.nb_transmission_lines):
-                        diff = float(
+                        diff_flows = float(
                             round(
                                 self.ptdf[k][connected_bus]
                                 * (
@@ -213,14 +213,14 @@ class UnifiedPlanningProblem:
                         )
                         action.add_increase_effect(
                             self.flows[k][0],
-                            diff,
+                            diff_flows,
                         )
                         action.add_effect(
                             self.congestions[k][0],
                             True,
                             condition=Or(
                                 GE(
-                                    self.flows[k][0] + diff,
+                                    self.flows[k][0] + diff_flows,
                                     float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -228,7 +228,7 @@ class UnifiedPlanningProblem:
                                     ),
                                 ),
                                 LE(
-                                    self.flows[k][0] + diff,
+                                    self.flows[k][0] + diff_flows,
                                     float(
                                         -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -242,7 +242,7 @@ class UnifiedPlanningProblem:
                             False,
                             condition=And(
                                 LT(
-                                    self.flows[k][0] + diff,
+                                    self.flows[k][0] + diff_flows,
                                     float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -250,7 +250,7 @@ class UnifiedPlanningProblem:
                                     ),
                                 ),
                                 GT(
-                                    self.flows[k][0] + diff,
+                                    self.flows[k][0] + diff_flows,
                                     float(
                                         -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
@@ -267,49 +267,47 @@ class UnifiedPlanningProblem:
                 # TODO
         return actions_costs
 
-    def create_stor_actions(self) -> dict[str, float]:
+    def create_sto_actions(self) -> dict[str, float]:
         """Create actions for storages.
 
         Returns:
             dict[str, float]: dictionary of storages actions and their costs
         """
-        self.pstor_actions = []
+        self.psto_actions = []
         actions_costs = {}
 
-        for stor_id in range(self.nb_storages):
-            soc_max = int(self.grid_params[cfg.STORAGES][cfg.EMAX][stor_id])
-            soc_min = int(self.grid_params[cfg.STORAGES][cfg.EMIN][stor_id])
-            pmax_charge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][
-                stor_id
-            ]
+        for sto_id in range(self.nb_storages):
+            soc_max = int(self.grid_params[cfg.STORAGES][cfg.EMAX][sto_id])
+            soc_min = int(self.grid_params[cfg.STORAGES][cfg.EMIN][sto_id])
+            pmax_charge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][sto_id]
             pmax_discharge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_ABSORB][
-                stor_id
+                sto_id
             ]
             charging_efficiency = self.grid_params[cfg.STORAGES][
                 cfg.CHARGING_EFFICIENCY
-            ][stor_id]
+            ][sto_id]
             discharging_efficiency = self.grid_params[cfg.STORAGES][
                 cfg.DISCHARGING_EFFICIENCY
-            ][stor_id]
+            ][sto_id]
             connected_bus = int(
-                self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][stor_id]
-            ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][stor_id])
+                self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][sto_id]
+            ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][sto_id])
 
             if charging_efficiency == 0 or discharging_efficiency == 0:
                 self.logger.warning(
-                    f"Storage: {stor_id} has 0 charge or discharge efficiency, no action created!"
+                    f"Storage: {sto_id} has 0 charge or discharge efficiency, no action created!"
                 )
                 continue
-            for i in np.linspace(soc_min, soc_max + 1, 2 * (soc_max - soc_min)):
+            for i in np.linspace(soc_min, soc_max + 1, 10 * (soc_max - soc_min)):
                 if not (
-                    self.initial_states[cfg.STORAGES][stor_id]
+                    self.initial_states[cfg.STORAGES][sto_id]
                     >= i - pmax_charge * self.time_step / 60 / charging_efficiency
-                    and self.initial_states[cfg.STORAGES][stor_id]
+                    and self.initial_states[cfg.STORAGES][sto_id]
                     <= i + pmax_discharge * self.time_step / 60 * discharging_efficiency
                 ):
                     continue
 
-                target_delta_soc = i - self.initial_states[cfg.STORAGES][stor_id]
+                target_delta_soc = i - self.initial_states[cfg.STORAGES][sto_id]
                 if target_delta_soc > 0:
                     target_pcharge = (
                         (60 / self.time_step) * target_delta_soc / charging_efficiency
@@ -328,50 +326,50 @@ class UnifiedPlanningProblem:
 
                 # although there can be a change in the delta SOC forecast (due to loss) we will asusme the the forecasted power charge and dischare are always 0
                 # meaning that the forecasted plan for storage is to do nothing.
-                self.pstor_actions.append(
-                    InstantaneousAction(f"stor_target_{stor_id}_{0}_{i}")
+                self.psto_actions.append(
+                    InstantaneousAction(f"sto_target_{sto_id}_{0}_{i}")
                 )
-                action = self.pstor_actions[-1]
+                action = self.psto_actions[-1]
 
                 actions_costs[action] = float(
                     abs(target_delta_soc)
-                    * self.grid_params[cfg.STORAGES][cfg.STORAGE_COST_PER_MW][stor_id]
+                    * self.grid_params[cfg.STORAGES][cfg.STORAGE_COST_PER_MW][sto_id]
                 )
                 action.add_precondition(
                     And(
                         GE(
-                            self.pstor[stor_id][0],
+                            self.psto[sto_id][0],
                             float(
-                                self.forecasted_states[cfg.STORAGES][0][stor_id]
+                                self.forecasted_states[cfg.STORAGES][0][sto_id]
                                 - self.float_precision
                             ),
                         ),
                         LE(
-                            self.pstor[stor_id][0],
+                            self.psto[sto_id][0],
                             float(
-                                self.forecasted_states[cfg.STORAGES][0][stor_id]
+                                self.forecasted_states[cfg.STORAGES][0][sto_id]
                                 + self.float_precision
                             ),
                         ),
                     )
                 )
-                action.add_effect(self.pstor[stor_id][0], i)
+                action.add_effect(self.psto[sto_id][0], i)
 
                 for k in range(self.nb_transmission_lines):
-                    diff_flow = float(
+                    diff_flows = float(
                         round(
                             self.ptdf[k][connected_bus]
                             * (-target_pcharge + target_pdischarge),
                             self.nb_digits,
                         )
                     )
-                    action.add_increase_effect(self.flows[k][0], diff_flow)
+                    action.add_increase_effect(self.flows[k][0], diff_flows)
                     action.add_effect(
                         self.congestions[k][0],
                         True,
                         condition=Or(
                             GE(
-                                self.flows[k][0] + diff_flow,
+                                self.flows[k][0] + diff_flows,
                                 float(
                                     self.grid_params[cfg.TRANSMISSION_LINES][k][
                                         cfg.MAX_FLOW
@@ -379,7 +377,7 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                             LE(
-                                self.flows[k][0] + diff_flow,
+                                self.flows[k][0] + diff_flows,
                                 float(
                                     -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                         cfg.MAX_FLOW
@@ -393,7 +391,7 @@ class UnifiedPlanningProblem:
                         False,
                         condition=And(
                             LT(
-                                self.flows[k][0] + diff_flow,
+                                self.flows[k][0] + diff_flows,
                                 float(
                                     self.grid_params[cfg.TRANSMISSION_LINES][k][
                                         cfg.MAX_FLOW
@@ -401,7 +399,7 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                             GT(
-                                self.flows[k][0] + diff_flow,
+                                self.flows[k][0] + diff_flows,
                                 float(
                                     -self.grid_params[cfg.TRANSMISSION_LINES][k][
                                         cfg.MAX_FLOW
@@ -419,9 +417,9 @@ class UnifiedPlanningProblem:
     def create_actions(self):
         """Create actions for the problem."""
         gen_costs = self.create_gen_actions()
-        stor_costs = self.create_stor_actions()
+        sto_costs = self.create_sto_actions()
 
-        self.actions_costs = {**gen_costs, **stor_costs}
+        self.actions_costs = {**gen_costs, **sto_costs}
 
     def create_problem(self):
         """Create the problem to solve."""
@@ -432,9 +430,9 @@ class UnifiedPlanningProblem:
             for t in range(self.operational_horizon):
                 problem.add_fluent(self.pgen[gen_id][t])
 
-        for stor_id in range(self.nb_storages):
+        for sto_id in range(self.nb_storages):
             for t in range(self.operational_horizon):
-                problem.add_fluent(self.pstor[stor_id][t])
+                problem.add_fluent(self.psto[sto_id][t])
 
         for k in range(self.nb_transmission_lines):
             for t in range(self.operational_horizon):
@@ -443,7 +441,7 @@ class UnifiedPlanningProblem:
 
         # add actions
         problem.add_actions(self.pgen_actions)
-        problem.add_actions(self.pstor_actions)
+        problem.add_actions(self.psto_actions)
 
         # add initial states
         for gen_id in range(self.nb_gens):
@@ -453,11 +451,11 @@ class UnifiedPlanningProblem:
                     float(self.forecasted_states[cfg.GENERATORS][t][gen_id]),
                 )
 
-        for stor_id in range(self.nb_storages):
+        for sto_id in range(self.nb_storages):
             for t in range(self.operational_horizon):
                 problem.set_initial_value(
-                    self.pstor[stor_id][t],
-                    float(self.forecasted_states[cfg.STORAGES][t][stor_id]),
+                    self.psto[sto_id][t],
+                    float(self.forecasted_states[cfg.STORAGES][t][sto_id]),
                 )
                 # TODO: correct because no forecasted state for storage when several time step
 
@@ -500,10 +498,10 @@ class UnifiedPlanningProblem:
         # upp problem, "upp" stands for unified planning problem
         with open(pjoin(self.log_dir, upp_file), "w") as f:
             f.write(
-                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.pstor)+ compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
+                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.psto)+ compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
             )
             f.write(
-                f"number of actions: {len(self.pgen_actions) + len(self.pstor_actions)}\n"
+                f"number of actions: {len(self.pgen_actions) + len(self.psto_actions)}\n"
             )
             f.write(self.problem.__str__())
         f.close()
@@ -553,7 +551,7 @@ class UnifiedPlanningProblem:
                                 f"\tgens new value: {[[float(state_test.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tstorages new value: {[[float(state_test.get_value(self.pstor_exp[s][t]).constant_value()) for s in range(self.nb_storages)] for t in range(self.operational_horizon)]}"
+                                f"\tstorages new value: {[[float(state_test.get_value(self.psto_exp[s][t]).constant_value()) for s in range(self.nb_storages)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
                                 f"\tflows new value: {[[float(state_test.get_value(self.flows_exp[k][t]).constant_value()) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
@@ -562,7 +560,7 @@ class UnifiedPlanningProblem:
                                 f"\tcongestions new value: {[[state_test.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.operational_horizon)]}"
                             )
                             self.logger.debug(
-                                f"\tgen slack new value: {[float(state_test.get_value(self.pgen_exp[self.slack_id[0]][t]).constant_value()) for t in range(self.operational_horizon)]}"
+                                f"\tgen slack new value: {[float(state_test.get_value(self.pgen_exp[self.slack_id][t]).constant_value()) for t in range(self.operational_horizon)]}"
                             )
                             minimize_cost_value = evaluate_quality_metric(
                                 simulator,
