@@ -234,7 +234,7 @@ class AIPlan4GridAgent:
             for line in congested_lines:
                 print(
                     f"\t\tLine {line} is congested with a flow of {self.curr_obs.p_or[line]:.2f} MW,",
-                    f"but have a maximum flow of {self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]:.2f} MW",
+                    f"but have a maximum/minimum flow of +/- {self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]:.2f} MW",
                 )
         return congested
 
