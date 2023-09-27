@@ -94,7 +94,7 @@ class UnifiedPlanningProblem:
         self.psto_exp = np.array(
             [
                 [
-                    FluentExp(self.pgen[sto_id][t])
+                    FluentExp(self.psto[sto_id][t])
                     for t in range(self.operational_horizon)
                 ]
                 for sto_id in range(self.nb_storages)
@@ -313,6 +313,7 @@ class UnifiedPlanningProblem:
                         (60 / self.time_step) * target_delta_soc / charging_efficiency
                     )
                     target_pdischarge = 0
+                    self.logger.debug(f"action is to charge off : {target_pcharge }")
                 elif target_delta_soc < 0:
                     target_pdischarge = (
                         -(60 / self.time_step)
@@ -320,9 +321,11 @@ class UnifiedPlanningProblem:
                         * discharging_efficiency
                     )
                     target_pcharge = 0
+                    self.logger.debug(f"action sto_target_{sto_id}_{0}_{i} is to discharge off : {target_pdischarge }")
                 else:
                     target_pdischarge = 0
                     target_pcharge = 0
+
 
                 # although there can be a change in the delta SOC forecast (due to loss) we will asusme the the forecasted power charge and dischare are always 0
                 # meaning that the forecasted plan for storage is to do nothing.
