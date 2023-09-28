@@ -291,23 +291,32 @@ class AIPlan4GridAgent:
             # we get the value of the action
             value = float(action_info[4])
 
+            action_value = 0
+
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 current_value = self.curr_obs.gen_p[id]
-            elif action_type == cfg.STORAGE_ACTION_PREFIX:
-                current_value = self.curr_obs.storage_charge[id]
-            else:
-                raise RuntimeError(
-                    "The action type is not valid, it should be either prod_target or storage_target"
-                )
-
-            # we compute the value of the action
-            action_value = value - current_value
-
-            # we add the action to the dict
-            if action_type == cfg.GENERATOR_ACTION_PREFIX:
+                action_value = value - current_value
                 g2op_actions[cfg.REDISPATCH].append((id, action_value))
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
+                current_value = self.curr_obs.storage_charge[id]
+                delta_soc = value - current_value
+                if delta_soc >= 0:
+                    action_value = (
+                        (60 / self.time_step)
+                        * delta_soc
+                        / self.static_properties[cfg.STORAGES][cfg.CHARGING_EFFICIENCY][
+                            id
+                        ]
+                    )
+                else:
+                    action_value = (
+                        (60 / self.time_step)
+                        * delta_soc
+                        * self.static_properties[cfg.STORAGES][
+                            cfg.DISCHARGING_EFFICIENCY
+                        ][id]
+                    )
                 g2op_actions[cfg.SET_STORAGE].append((id, action_value))
             else:
                 raise RuntimeError(

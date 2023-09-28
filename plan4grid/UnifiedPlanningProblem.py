@@ -90,7 +90,7 @@ class UnifiedPlanningProblem:
 
         self.psto_exp = np.array(
             [
-                [FluentExp(self.pgen[sto_id][t]) for t in range(self.tactical_horizon)]
+                [FluentExp(self.psto[sto_id][t]) for t in range(self.tactical_horizon)]
                 for sto_id in range(self.nb_storages)
             ]
         )
@@ -263,6 +263,7 @@ class UnifiedPlanningProblem:
 
     def create_sto_actions(self) -> dict[str, float]:
         """Create actions for storages.
+        WE ASSUME THAT THERE IS NO LOSS OF ENERGY IN THE STORAGE BETWEEN TWO TIME STEPS.
 
         Returns:
             dict[str, float]: dictionary of storages actions and their costs
@@ -307,6 +308,7 @@ class UnifiedPlanningProblem:
                         (60 / self.time_step) * target_delta_soc / charging_efficiency
                     )
                     target_pdischarge = 0
+                    self.logger.debug(f"Action is to charge off: {target_pcharge}")
                 elif target_delta_soc < 0:
                     target_pdischarge = (
                         -(60 / self.time_step)
@@ -314,12 +316,13 @@ class UnifiedPlanningProblem:
                         * discharging_efficiency
                     )
                     target_pcharge = 0
+                    self.logger.debug(
+                        f"Action sto_target_{sto_id}_{0}_{i} is to discharge off: {target_pdischarge}"
+                    )
                 else:
                     target_pdischarge = 0
                     target_pcharge = 0
 
-                # although there can be a change in the delta SOC forecast (due to loss) we will asusme the the forecasted power charge and dischare are always 0
-                # meaning that the forecasted plan for storage is to do nothing.
                 self.psto_actions.append(
                     InstantaneousAction(f"sto_target_{sto_id}_{0}_{i}")
                 )
@@ -451,7 +454,6 @@ class UnifiedPlanningProblem:
                     self.psto[sto_id][t],
                     float(self.forecasted_states[cfg.STORAGES][t][sto_id]),
                 )
-                # TODO: correct because no forecasted state for storage when several time step
 
         for k in range(self.nb_transmission_lines):
             for t in range(self.tactical_horizon):
@@ -477,7 +479,7 @@ class UnifiedPlanningProblem:
             Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
             for t in range(self.tactical_horizon)
-        ]  # is it too restrictive?
+        ]  # is it too restrictive? To update
 
         problem.add_goal(And(goals))
 
