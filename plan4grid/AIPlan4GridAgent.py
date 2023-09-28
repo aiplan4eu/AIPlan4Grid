@@ -132,6 +132,7 @@ class AIPlan4GridAgent:
         env: Environment,
         scenario_id: int,
         operational_horizon: int,
+        tactical_horizon: int,
         solver: str,
         debug: bool = False,
     ):
@@ -151,6 +152,7 @@ class AIPlan4GridAgent:
         self.initial_topology = deepcopy(self.env).reset().connectivity_matrix()
         self.curr_obs = self.env.reset()
         self.operational_horizon = operational_horizon
+        self.tactical_horizon = tactical_horizon
         self.static_properties = self.get_static_properties()
         self.mutable_properties = self.get_mutable_properties()
         self.ptdf = self.get_ptdf()
@@ -173,40 +175,31 @@ class AIPlan4GridAgent:
         """
         do_nothing_action = self.env.action_space({})
 
-        simulated_observations = [self.curr_obs.simulate(do_nothing_action)[0]]
-        for _ in range(self.operational_horizon - 1):
-            obs, *_ = simulated_observations[-1].simulate(do_nothing_action)
-            simulated_observations.append(obs)
+        simulated_observations = [
+            self.curr_obs.simulate(do_nothing_action, i)[0]
+            for i in range(1, self.tactical_horizon + 1)
+        ]
 
         forecasted_states = {
             cfg.GENERATORS: np.array(
-                [
-                    simulated_observations[t].gen_p
-                    for t in range(self.operational_horizon)
-                ]
+                [simulated_observations[t].gen_p for t in range(self.tactical_horizon)]
             ),
             cfg.LOADS: np.array(
-                [
-                    simulated_observations[t].load_p
-                    for t in range(self.operational_horizon)
-                ]
+                [simulated_observations[t].load_p for t in range(self.tactical_horizon)]
             ),
             cfg.STORAGES: np.array(
                 [
                     simulated_observations[t].storage_charge
-                    for t in range(self.operational_horizon)
+                    for t in range(self.tactical_horizon)
                 ]
             ),
             cfg.FLOWS: np.array(
-                [
-                    simulated_observations[t].p_or
-                    for t in range(self.operational_horizon)
-                ]
+                [simulated_observations[t].p_or for t in range(self.tactical_horizon)]
             ),
             cfg.TRANSMISSION_LINES: np.array(
                 [
                     simulated_observations[t].rho >= 1
-                    for t in range(self.operational_horizon)
+                    for t in range(self.tactical_horizon)
                 ]
             ),
         }
@@ -257,6 +250,7 @@ class AIPlan4GridAgent:
             print("\tUpdating PTDF matrix and mutable properties...")
             self.ptdf = self.get_ptdf()
             self.mutable_properties = self.get_mutable_properties()
+            self.initial_topology = current_topology
             print("\tDone!")
         return not topology_unchanged
 
@@ -343,7 +337,7 @@ class AIPlan4GridAgent:
         print("\tCreating UP problem...")
         grid_params = {**self.static_properties, **self.mutable_properties}
         upp = UnifiedPlanningProblem(
-            self.operational_horizon,
+            self.tactical_horizon,
             self.time_step,
             self.ptdf,
             grid_params,
