@@ -61,7 +61,6 @@ def parse_ini(ini_file_path: str) -> dict:
 
     parameters_section = config[cfg.PARAMETERS]
     parameters = {
-        cfg.OPERATIONAL_HORIZON: int(parameters_section[cfg.OPERATIONAL_HORIZON]),
         cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
@@ -86,6 +85,60 @@ def routine(agent: AIPlan4GridAgent):
     print(f"\n* Cumulative reward: {cumulative_reward}")
 
 
+def get_data_feeding_kwargs(time_step: int, tactical_horizon: int, noisy: bool) -> dict:
+    if noisy:
+        print("Noise is activated.")
+        handler = NoisyForecastHandler
+    else:
+        print("Noise is deactivated.")
+        handler = PerfectForecastHandler
+
+    return {
+        "gridvalueClass": FromHandlers,
+        "gen_p_handler": CSVHandler("prod_p"),
+        "load_p_handler": CSVHandler("load_p"),
+        "gen_v_handler": DoNothingHandler("prod_v"),
+        "load_q_handler": CSVHandler("load_q"),
+        "h_forecast": [h * time_step for h in range(tactical_horizon)],
+        "gen_p_for_handler": handler("prod_p_forecasted"),
+        "load_p_for_handler": handler("load_p_forecasted"),
+        "load_q_for_handler": handler("load_q_forecasted"),
+    }
+
+
+def check_parameters(parameters: dict):
+    """Check the given parameters."""
+    try:
+        if parameters[cfg.TACTICAL_HORIZON] > parameters[cfg.STRATEGIC_HORIZON]:
+            raise ValueError(
+                f"The tactical horizon ({parameters[cfg.TACTICAL_HORIZON]}) cannot be greater than the strategic horizon ({parameters[cfg.STRATEGIC_HORIZON]})."
+            )
+        if parameters[cfg.TACTICAL_HORIZON] <= 0:
+            raise ValueError(
+                f"The tactical horizon ({parameters[cfg.TACTICAL_HORIZON]}) must be greater than 0."
+            )
+        if parameters[cfg.STRATEGIC_HORIZON] <= 0:
+            raise ValueError(
+                f"The strategic horizon ({parameters[cfg.STRATEGIC_HORIZON]}) must be greater than 0."
+            )
+        if parameters[cfg.SOLVER] not in cfg.SOLVERS:
+            raise ValueError(
+                f"The solver ({parameters[cfg.SOLVER]}) must be one of the following: {cfg.SOLVERS}."
+            )
+        if parameters[cfg.NOISE] not in [True, False]:
+            raise ValueError(
+                f"The noise parameter ({parameters[cfg.NOISE]}) must be a boolean."
+            )
+        if parameters[cfg.STRATEGIC_HORIZON] > 288:
+            raise ValueError(
+                f"The strategic horizon ({parameters[cfg.STRATEGIC_HORIZON]}) must be lower or equal to 288, (24 hours in 5 minutes time steps)."
+            )
+    except KeyError as e:
+        raise KeyError(
+            f"The parameter {e} is missing in the configuration file. Please make sure that the configuration file contains only the following parameters: {cfg.PARAMETERS_LIST}."
+        )
+
+
 def main(args: argparse.Namespace):
     """Main function."""
     try:
@@ -95,6 +148,8 @@ def main(args: argparse.Namespace):
         else:
             parameters = parse_ini(args.config_file)
 
+        check_parameters(parameters)
+
         global STRATEGIC_HORIZON
         global TACTICAL_HORIZON
 
@@ -102,33 +157,19 @@ def main(args: argparse.Namespace):
         TACTICAL_HORIZON = parameters[cfg.TACTICAL_HORIZON]
         TIME_STEP = 5
 
-        if parameters[cfg.NOISE]:
-            print("Noise is activated.")
-            handler = NoisyForecastHandler
-        else:
-            print("Noise is deactivated.")
-            handler = PerfectForecastHandler
-
         env = grid2op.make(
             dataset=args.env_name,
-            data_feeding_kwargs={
-                "gridvalueClass": FromHandlers,
-                "gen_p_handler": CSVHandler("prod_p"),
-                "load_p_handler": CSVHandler("load_p"),
-                "gen_v_handler": DoNothingHandler("prod_v"),
-                "load_q_handler": CSVHandler("load_q"),
-                "h_forecast": [h * TIME_STEP for h in range(1, TACTICAL_HORIZON + 1)],
-                "gen_p_for_handler": handler("prod_p_forecasted"),
-                "load_p_for_handler": handler("load_p_forecasted"),
-                "load_q_for_handler": handler("load_q_forecasted"),
-            },
+            data_feeding_kwargs=get_data_feeding_kwargs(
+                TIME_STEP,
+                TACTICAL_HORIZON,
+                parameters[cfg.NOISE],
+            ),
             test=True,
             backend=PandaPowerBackend(),
         )
         agent = AIPlan4GridAgent(
             env=env,
             scenario_id=int(args.scenario_id),
-            operational_horizon=parameters[cfg.OPERATIONAL_HORIZON],
             tactical_horizon=TACTICAL_HORIZON,
             solver=parameters[cfg.SOLVER],
             debug=True,

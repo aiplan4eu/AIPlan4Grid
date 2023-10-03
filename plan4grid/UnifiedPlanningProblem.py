@@ -156,9 +156,9 @@ class UnifiedPlanningProblem:
                 ) * int(self.grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID][gen_id])
                 for i in range(pmin, pmax + 1, 1):
                     if not (
-                        float(self.initial_states[cfg.GENERATORS][gen_id])
+                        float(self.initial_states[cfg.GEN_PROD][gen_id])
                         >= i - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
-                        and float(self.initial_states[cfg.GENERATORS][gen_id])
+                        and float(self.initial_states[cfg.GEN_PROD][gen_id])
                         <= i
                         + self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][gen_id]
                     ):
@@ -168,7 +168,7 @@ class UnifiedPlanningProblem:
                     )
                     action = self.pgen_actions[-1]
                     actions_costs[action] = float(
-                        abs(i - self.initial_states[cfg.GENERATORS][gen_id])
+                        abs(i - self.initial_states[cfg.GEN_PROD][gen_id])
                         * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][gen_id]
                     )
                     action.add_precondition(
@@ -176,14 +176,14 @@ class UnifiedPlanningProblem:
                             GE(
                                 self.pgen[gen_id][0],
                                 float(
-                                    self.forecasted_states[cfg.GENERATORS][0][gen_id]
+                                    self.forecasted_states[cfg.GEN_PROD][0][gen_id]
                                     - self.float_precision
                                 ),
                             ),
                             LE(
                                 self.pgen[gen_id][0],
                                 float(
-                                    self.forecasted_states[cfg.GENERATORS][0][gen_id]
+                                    self.forecasted_states[cfg.GEN_PROD][0][gen_id]
                                     + self.float_precision
                                 ),
                             ),
@@ -197,9 +197,7 @@ class UnifiedPlanningProblem:
                                 * (
                                     i
                                     - float(
-                                        self.forecasted_states[cfg.GENERATORS][0][
-                                            gen_id
-                                        ]
+                                        self.forecasted_states[cfg.GEN_PROD][0][gen_id]
                                     )
                                 ),
                                 self.nb_digits,
@@ -255,7 +253,7 @@ class UnifiedPlanningProblem:
                         )
                     action.add_decrease_effect(
                         self.pgen[self.slack_id][0],
-                        i - float(self.forecasted_states[cfg.GENERATORS][0][gen_id]),
+                        i - float(self.forecasted_states[cfg.GEN_PROD][0][gen_id]),
                     )
                 # for horizon > 1
                 # TODO
@@ -295,14 +293,14 @@ class UnifiedPlanningProblem:
                 continue
             for i in np.linspace(soc_min, soc_max + 1, 10 * (soc_max - soc_min)):
                 if not (
-                    self.initial_states[cfg.STORAGES][sto_id]
+                    self.initial_states[cfg.STO_CHARGE][sto_id]
                     >= i - pmax_charge * self.time_step / 60 / charging_efficiency
-                    and self.initial_states[cfg.STORAGES][sto_id]
+                    and self.initial_states[cfg.STO_CHARGE][sto_id]
                     <= i + pmax_discharge * self.time_step / 60 * discharging_efficiency
                 ):
                     continue
 
-                target_delta_soc = i - self.initial_states[cfg.STORAGES][sto_id]
+                target_delta_soc = i - self.initial_states[cfg.STO_CHARGE][sto_id]
                 if target_delta_soc > 0:
                     target_pcharge = (
                         (60 / self.time_step) * target_delta_soc / charging_efficiency
@@ -337,14 +335,14 @@ class UnifiedPlanningProblem:
                         GE(
                             self.psto[sto_id][0],
                             float(
-                                self.forecasted_states[cfg.STORAGES][0][sto_id]
+                                self.forecasted_states[cfg.STO_CHARGE][0][sto_id]
                                 - self.float_precision
                             ),
                         ),
                         LE(
                             self.psto[sto_id][0],
                             float(
-                                self.forecasted_states[cfg.STORAGES][0][sto_id]
+                                self.forecasted_states[cfg.STO_CHARGE][0][sto_id]
                                 + self.float_precision
                             ),
                         ),
@@ -445,21 +443,21 @@ class UnifiedPlanningProblem:
             for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.pgen[gen_id][t],
-                    float(self.forecasted_states[cfg.GENERATORS][t][gen_id]),
+                    float(self.forecasted_states[cfg.GEN_PROD][t][gen_id]),
                 )
 
         for sto_id in range(self.nb_storages):
             for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.psto[sto_id][t],
-                    float(self.forecasted_states[cfg.STORAGES][t][sto_id]),
+                    float(self.forecasted_states[cfg.STO_CHARGE][t][sto_id]),
                 )
 
         for k in range(self.nb_transmission_lines):
             for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.congestions[k][t],
-                    bool(self.forecasted_states[cfg.TRANSMISSION_LINES][t][k]),
+                    bool(self.forecasted_states[cfg.CONGESTED_STATUS][t][k]),
                 )
                 problem.set_initial_value(
                     self.flows[k][t],

@@ -5,11 +5,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEFAULT_INI_FILE = "parameters.ini"
 PARAMETERS = "Parameters"
-OPERATIONAL_HORIZON = "operational_horizon"
 TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
 SOLVER = "solver"
 NOISE = "noise"
+
+PARAMETERS_LIST = [TACTICAL_HORIZON, STRATEGIC_HORIZON, SOLVER, NOISE]
+SOLVERS = ["enhsp"]
 
 # DO NOT CHANGE THE FOLLOWING STRINGS (USED BY THE BACKEND)
 ###########################################################
@@ -26,6 +28,7 @@ MAX_RAMP_UP = "max_ramp_up"
 MAX_RAMP_DOWN = "max_ramp_down"
 GEN_COST_PER_MW = "gen_cost_per_MW"
 GEN_BUS = "gen_bus"
+GEN_PROD = "gen_prod"
 
 STORAGES = "storages"
 EMAX = "Emax"
@@ -37,6 +40,7 @@ STORAGE_MAX_P_PROD = "storage_max_p_prod"
 STORAGE_MAX_P_ABSORB = "storage_max_p_absorb"
 STORAGE_COST_PER_MW = "storage_marginal_cost"
 STORAGE_BUS = "storage_bus"
+STO_CHARGE = "sto_charge"
 
 TRANSMISSION_LINES = "transmission_lines"
 FLOWS = "flows"
@@ -44,7 +48,8 @@ FROM_BUS = "from_bus"
 TO_BUS = "to_bus"
 HV_BUS = "hv_bus"
 LV_BUS = "lv_bus"
-STATUS = "status"
+CONNECTED_STATUS = "connected_status"
+CONGESTED_STATUS = "congested_status"
 MAX_FLOW = "max_flow"
 
 LOADS = "loads"

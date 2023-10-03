@@ -13,6 +13,7 @@ from pandapower.pypower.makePTDF import makePTDF
 
 import plan4grid.config as cfg
 from plan4grid.UnifiedPlanningProblem import InstantaneousAction, UnifiedPlanningProblem
+from plan4grid.utils import verbose_print
 
 
 class AIPlan4GridAgent:
@@ -77,11 +78,11 @@ class AIPlan4GridAgent:
 
         # Generators parameters
         self.static_properties[cfg.GENERATORS][cfg.GEN_BUS] = self.curr_obs.gen_bus
-
         # Storages parameters
         self.static_properties[cfg.STORAGES][
             cfg.STORAGE_BUS
         ] = self.curr_obs.storage_bus
+        # TODO: refactor this, not clean but not a priority
 
         max_flows = np.array(
             (
@@ -108,7 +109,7 @@ class AIPlan4GridAgent:
 
         for tl_id in mutable_properties[cfg.TRANSMISSION_LINES].keys():
             mutable_properties[cfg.TRANSMISSION_LINES][tl_id][
-                cfg.STATUS
+                cfg.CONNECTED_STATUS
             ] = self.curr_obs.line_status[tl_id]
             mutable_properties[cfg.TRANSMISSION_LINES][tl_id][cfg.MAX_FLOW] = max_flows[
                 tl_id
@@ -131,7 +132,6 @@ class AIPlan4GridAgent:
         self,
         env: Environment,
         scenario_id: int,
-        operational_horizon: int,
         tactical_horizon: int,
         solver: str,
         debug: bool = False,
@@ -151,7 +151,6 @@ class AIPlan4GridAgent:
         self.env.set_id(scenario_id)
         self.initial_topology = deepcopy(self.env).reset().connectivity_matrix()
         self.curr_obs = self.env.reset()
-        self.operational_horizon = operational_horizon
         self.tactical_horizon = tactical_horizon
         self.static_properties = self.get_static_properties()
         self.mutable_properties = self.get_mutable_properties()
@@ -177,17 +176,17 @@ class AIPlan4GridAgent:
 
         simulated_observations = [
             self.curr_obs.simulate(do_nothing_action, i)[0]
-            for i in range(1, self.tactical_horizon + 1)
+            for i in range(self.tactical_horizon)
         ]
 
         forecasted_states = {
-            cfg.GENERATORS: np.array(
+            cfg.GEN_PROD: np.array(
                 [simulated_observations[t].gen_p for t in range(self.tactical_horizon)]
             ),
             cfg.LOADS: np.array(
                 [simulated_observations[t].load_p for t in range(self.tactical_horizon)]
             ),
-            cfg.STORAGES: np.array(
+            cfg.STO_CHARGE: np.array(
                 [
                     simulated_observations[t].storage_charge
                     for t in range(self.tactical_horizon)
@@ -196,7 +195,7 @@ class AIPlan4GridAgent:
             cfg.FLOWS: np.array(
                 [simulated_observations[t].p_or for t in range(self.tactical_horizon)]
             ),
-            cfg.TRANSMISSION_LINES: np.array(
+            cfg.CONGESTED_STATUS: np.array(
                 [
                     simulated_observations[t].rho >= 1
                     for t in range(self.tactical_horizon)
@@ -205,53 +204,98 @@ class AIPlan4GridAgent:
         }
 
         initial_states = {
-            cfg.GENERATORS: self.curr_obs.gen_p,
+            cfg.GEN_PROD: self.curr_obs.gen_p,
             cfg.LOADS: self.curr_obs.load_p,
-            cfg.STORAGES: self.curr_obs.storage_charge,
+            cfg.STO_CHARGE: self.curr_obs.storage_charge,
             cfg.FLOWS: self.curr_obs.p_or,
-            cfg.TRANSMISSION_LINES: self.curr_obs.rho >= 1,
+            cfg.CONGESTED_STATUS: self.curr_obs.rho >= 1,
         }
 
         return initial_states, forecasted_states
 
-    def check_congestions(self) -> bool:
-        """This function checks if there is a congestion on the grid.
+    def check_congestions(self, verbose: bool = True) -> bool:
+        """This function checks if there is a congestion on the grid on the current observation and on the forecasted observations.
+
+        Args:
+            verbose (bool, optional): If True, print information about the congestion. Defaults to True.
 
         Returns:
             bool: True if there is a congestion, False otherwise
         """
-        congested = np.any(self.curr_obs.rho >= 1)
-        if congested:
-            print("\tCongestion detected!")
+        vprint = verbose_print(verbose)
+
+        congested_now = np.any(self.curr_obs.rho >= 1)
+        congested_future = np.any(self.forecasted_states[cfg.CONGESTED_STATUS])
+
+        def _print_congested_line(line, flow, max_flow, time_step):
+            vprint(
+                f"\t\tLine {line} is congested with a flow of {flow:.2f} MW,",
+                f"but have a maximum/minimum flow of +/- {max_flow:.2f} MW",
+                time_step,
+                "\n",
+            )
+
+        if congested_now:
+            vprint("\tCongestion detected!")
             congested_lines = np.where(self.curr_obs.rho >= 1)[0]
             for line in congested_lines:
-                print(
-                    f"\t\tLine {line} is congested with a flow of {self.curr_obs.p_or[line]:.2f} MW,",
-                    f"but have a maximum/minimum flow of +/- {self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]:.2f} MW",
-                )
-        return congested
+                max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][
+                    cfg.MAX_FLOW
+                ]
+                flow = self.curr_obs.p_or[line]
+                _print_congested_line(line, flow, max_flow, "right now")
+            return True
 
-    def check_topology(self) -> bool:
-        """This function checks if the topology of the grid has changed.
+        if congested_future and self.tactical_horizon > 1:
+            vprint("\tCongestion detected in the future!")
+            first_congestion_at = np.where(
+                self.forecasted_states[cfg.CONGESTED_STATUS]
+            )[0][0]
+            congested_lines = np.where(
+                self.forecasted_states[cfg.CONGESTED_STATUS][first_congestion_at]
+            )[0]
+            for line in congested_lines:
+                max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][
+                    cfg.MAX_FLOW
+                ]
+                forecasted_flow = self.forecasted_states[cfg.FLOWS][
+                    first_congestion_at
+                ][line]
+                _print_congested_line(
+                    line,
+                    forecasted_flow,
+                    max_flow,
+                    f"in {first_congestion_at+1} time steps",
+                )
+            return True
+
+        return False
+
+    def check_topology(self, verbose: bool = True) -> bool:
+        """This function checks if the topology of the grid has changed on the current observation.
+
+        Args:
+            verbose (bool, optional): If True, print information about the congestion. Defaults to True.
 
         Returns:
             bool: True if the topology has changed, False otherwise
         """
+        vprint = verbose_print(verbose)
         current_topology = self.curr_obs.connectivity_matrix()
         topology_unchanged = np.array_equal(self.initial_topology, current_topology)
         if not topology_unchanged:
-            print("\tTopology has changed!")
+            vprint("\tTopology has changed!")
             disconnected_lines = np.where(self.initial_topology & ~current_topology)[0]
             connected_lines = np.where(~self.initial_topology & current_topology)[0]
             for line in disconnected_lines:
-                print(f"\t\tLine {line} has been disconnected.")
+                vprint(f"\t\tLine {line} has been disconnected.")
             for line in connected_lines:
-                print(f"\t\tLine {line} has been connected.")
-            print("\tUpdating PTDF matrix and mutable properties...")
+                vprint(f"\t\tLine {line} has been connected.")
+            vprint("\tUpdating PTDF matrix and mutable properties...")
             self.ptdf = self.get_ptdf()
             self.mutable_properties = self.get_mutable_properties()
             self.initial_topology = current_topology
-            print("\tDone!")
+            vprint("\tDone!")
         return not topology_unchanged
 
     def update_states(self):
@@ -260,21 +304,22 @@ class AIPlan4GridAgent:
 
     def up_actions_to_g2op_actions(
         self, up_actions: list[InstantaneousAction]
-    ) -> dict[str, list[tuple[int, float]]]:
+    ) -> list[dict[str, list[tuple[int, float]]]]:
         """This function converts the actions of the UP problem to the actions of the grid2op environment.
 
         Args:
-            up_actions (list[str]): list of actions of the UP problem, obtained by solving it with the `UnifiedPlanningProblem` class
+            up_actions (list[InstantaneousAction]): list of actions of the UP problem, obtained by solving it with the `UnifiedPlanningProblem` class
 
         Raises:
-            RuntimeError: if the action type is not valid, it should be either prod_target or storage_target
+            RuntimeError: if the action type is not valid, it should be either `prod_target` or `storage_target`s
 
         Returns:
-            dict[str, list[tuple[int, float]]]: transposed actions of the UP problem to the grid2op environment
+            list[dict[str, list[tuple[int, float]]]]: transposed actions of the UP problem to the `grid2op` environment, one action dict per time step
         """
-        # first we create the dict that will be returned
-        g2op_actions = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
-        slack_actions = []
+        # first we create the list of dict that will be returned
+        template_dict = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
+        g2op_actions = [deepcopy(template_dict)]
+        time_steps = [0]
         # fetch the slack bus id
         slack_id = np.where(self.static_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
         # then we parse the up actions
@@ -291,13 +336,16 @@ class AIPlan4GridAgent:
             # we get the value of the action
             value = float(action_info[4])
 
-            action_value = 0
+            time_steps.append(time_step)
+            if time_step != time_steps[-1]:
+                new_dict = deepcopy(template_dict)
+                g2op_actions.append(new_dict)
 
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 current_value = self.curr_obs.gen_p[id]
                 action_value = value - current_value
-                g2op_actions[cfg.REDISPATCH].append((id, action_value))
+                g2op_actions[-1][cfg.REDISPATCH].append((id, action_value))
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 current_value = self.curr_obs.storage_charge[id]
                 delta_soc = value - current_value
@@ -317,33 +365,26 @@ class AIPlan4GridAgent:
                             cfg.DISCHARGING_EFFICIENCY
                         ][id]
                     )
-                g2op_actions[cfg.SET_STORAGE].append((id, action_value))
+                g2op_actions[-1][cfg.SET_STORAGE].append((id, action_value))
             else:
                 raise RuntimeError(
                     "The action type is not valid, it should be either prod_target or storage_target"
                 )
-            slack_actions.append((slack_id, -action_value))
-        g2op_actions[cfg.REDISPATCH].append(
-            (slack_id, sum([v[1] for v in slack_actions]))
-        )
+            g2op_actions[-1][cfg.REDISPATCH].append((slack_id, -action_value))
         return g2op_actions
 
-    def get_actions(self, step: int) -> ActionSpace:
-        """This function returns the actions to perform on the grid.
+    def get_UP_actions(self, step: int, verbose: bool = True) -> list[ActionSpace]:
+        """This function returns the `UnifiedPlanning` actions to perform on the grid.
 
         Args:
             step (int): current step of the simulation
+            verbose (bool, optional): If True, print information about the congestion. Defaults to True.
 
         Returns:
-            ActionSpace: g2op actions to perform on the grid
+            list[ActionSpace]: grid2op actions to perform on the grid (one `ActionSpace` per time step)
         """
-        self.update_states()
-        if self.check_congestions() == False and self.check_topology() == False:
-            print(
-                "\tNo congestion and no topology change detected, no need to solve UP problem."
-            )
-            return self.env.action_space({})
-        print("\tCreating UP problem...")
+        vprint = verbose_print(verbose)
+        vprint("\tCreating UP problem...")
         grid_params = {**self.static_properties, **self.mutable_properties}
         upp = UnifiedPlanningProblem(
             self.tactical_horizon,
@@ -355,15 +396,25 @@ class AIPlan4GridAgent:
             self.solver,
             problem_id=step,
         )
-        print(f"\tSaving UP problem in {cfg.LOG_DIR}")
+        vprint(f"\tSaving UP problem in {cfg.LOG_DIR}")
         upp.save_problem()
-        print("\tSolving UP problem...")
+        vprint("\tSolving UP problem...")
         start = timer()
         up_plan = upp.solve(simulate=self.debug)
         end = timer()
-        print(f"\tProblem solved in {end - start} seconds")
-        g2op_actions = self.up_actions_to_g2op_actions(up_plan)
-        return self.env.action_space(g2op_actions)
+        vprint(f"\tProblem solved in {end - start} seconds")
+        g2op_actions = [
+            self.env.action_space(d) for d in self.up_actions_to_g2op_actions(up_plan)
+        ]
+        if len(g2op_actions) != self.tactical_horizon:
+            # extend the actions to the tactical horizon with do nothing actions
+            g2op_actions.extend(
+                [
+                    self.env.action_space({})
+                    for _ in range(self.tactical_horizon - len(g2op_actions))
+                ]
+            )
+        return g2op_actions
 
     def progress(self, step: int) -> tuple[BaseObservation, float, bool, dict]:
         """This function performs one step of the simulation.
@@ -374,10 +425,27 @@ class AIPlan4GridAgent:
         Returns:
             tuple[BaseObservation, float, bool, dict]: respectively the observation, the reward, the done flag and the info dict
         """
-        actions = self.get_actions(step)
-        # print("\tPerforming actions:")
-        # print(f"\t{actions}")
-        observation, reward, done, info = self.env.step(actions)
-        # print(observation.p_or[17])
-        self.curr_obs = observation
-        return observation, reward, done, info
+        results = []
+        self.update_states()
+        if self.check_congestions() or self.check_topology():
+            actions = self.get_UP_actions(step)
+        else:
+            print("\tNo congestion detected, doing nothing...")
+            actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
+        i = 0
+        while i != self.tactical_horizon:
+            all_zeros = not actions[i].to_vect().any()
+            obs, reward, done, info = self.env.step(actions[i])
+            results.append((obs, reward, done, info))
+            self.update_states()
+            if all_zeros and (
+                self.check_congestions(verbose=False)
+                or self.check_topology(verbose=False)
+            ):
+                print(
+                    "\n\tDoing nothing induced a change in the grid topology or the congestion state, re-solving the UP problem...\n"
+                )
+                actions = [None in range(i + 1)] + self.get_UP_actions(step)
+            i += 1
+        self.curr_obs = results[-1][0]
+        return results[-1]
