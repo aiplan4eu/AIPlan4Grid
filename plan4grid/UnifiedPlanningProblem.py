@@ -132,6 +132,26 @@ class UnifiedPlanningProblem:
             ]
         )
 
+        self.curr_step = Fluent(f"curr_step", IntType())
+
+        self.curr_step_exp = FluentExp(self.curr_step)
+
+    def create_advance_step_action(self) -> dict[str, float]:
+        """Create advance time action.
+
+        Returns:
+            dict[str, float]: dictionary of advance time action and its cost
+        """
+        self.advance_step_action = InstantaneousAction("advance_step")
+        self.advance_step_action.add_precondition(
+            And(
+                GE(self.curr_step, 0),
+                LE(self.curr_step, self.tactical_horizon - 1),
+            )
+        )
+        self.advance_step_action.add_increase_effect(self.curr_step, 1)
+        return {self.advance_step_action: 0}
+
     def create_gen_actions(self) -> dict[str, float]:
         """Create actions for generators.
 
@@ -143,120 +163,132 @@ class UnifiedPlanningProblem:
         # Creating actions
         self.pgen_actions = []
 
-        # for horizon 0
-        for gen_id in range(self.nb_gens):
-            if (
-                self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][gen_id] == True
-                and self.grid_params[cfg.GENERATORS][cfg.SLACK][gen_id] == False
-            ):
-                pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
-                pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
-                connected_bus = int(
-                    self.grid_params[cfg.GENERATORS][cfg.GEN_BUS][gen_id]
-                ) * int(self.grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID][gen_id])
-                for i in range(pmin, pmax + 1, 1):
-                    if not (
-                        float(self.initial_states[cfg.GEN_PROD][gen_id])
-                        >= i - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
-                        and float(self.initial_states[cfg.GEN_PROD][gen_id])
-                        <= i
-                        + self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][gen_id]
-                    ):
-                        continue
-                    self.pgen_actions.append(
-                        InstantaneousAction(f"gen_target_{gen_id}_{0}_{i}")
-                    )
-                    action = self.pgen_actions[-1]
-                    actions_costs[action] = float(
-                        abs(i - self.initial_states[cfg.GEN_PROD][gen_id])
-                        * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][gen_id]
-                    )
-                    action.add_precondition(
-                        And(
-                            GE(
-                                self.pgen[gen_id][0],
-                                float(
-                                    self.forecasted_states[cfg.GEN_PROD][0][gen_id]
-                                    - self.float_precision
-                                ),
-                            ),
-                            LE(
-                                self.pgen[gen_id][0],
-                                float(
-                                    self.forecasted_states[cfg.GEN_PROD][0][gen_id]
-                                    + self.float_precision
-                                ),
-                            ),
+        for t in range(self.tactical_horizon):
+            for gen_id in range(self.nb_gens):
+                if (
+                    self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][gen_id] == True
+                    and self.grid_params[cfg.GENERATORS][cfg.SLACK][gen_id] == False
+                ):
+                    pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
+                    pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
+                    connected_bus = int(
+                        self.grid_params[cfg.GENERATORS][cfg.GEN_BUS][gen_id]
+                    ) * int(self.grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID][gen_id])
+                    if t == 0:
+                        states = self.initial_states
+                    else:
+                        states = self.forecasted_states[t - 1]
+                    for i in range(pmin, pmax + 1, 1):
+                        if not (
+                            float(states[cfg.GEN_PROD][gen_id])
+                            >= i
+                            - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
+                            and float(states[cfg.GEN_PROD][gen_id])
+                            <= i
+                            + self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][
+                                gen_id
+                            ]
+                        ):
+                            continue
+                        self.pgen_actions.append(
+                            InstantaneousAction(f"gen_target_{gen_id}_{t}_{i}")
                         )
-                    )
-                    action.add_effect(self.pgen[gen_id][0], i)
-                    for k in range(self.nb_transmission_lines):
-                        diff_flows = float(
-                            round(
-                                self.ptdf[k][connected_bus]
-                                * (
-                                    i
-                                    - float(
-                                        self.forecasted_states[cfg.GEN_PROD][0][gen_id]
-                                    )
-                                ),
-                                self.nb_digits,
-                            )
+                        action = self.pgen_actions[-1]
+                        actions_costs[action] = float(
+                            abs(i - states[cfg.GEN_PROD][gen_id])
+                            * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][
+                                gen_id
+                            ]
                         )
-                        action.add_increase_effect(
-                            self.flows[k][0],
-                            diff_flows,
+                        action.add_precondition(
+                            Equals(self.curr_step, t),
                         )
-                        action.add_effect(
-                            self.congestions[k][0],
-                            True,
-                            condition=Or(
+                        action.add_precondition(
+                            And(
                                 GE(
-                                    self.flows[k][0] + diff_flows,
+                                    self.pgen[gen_id][t],
                                     float(
-                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                            cfg.MAX_FLOW
-                                        ]
+                                        self.forecasted_states[cfg.GEN_PROD][t][gen_id]
+                                        - self.float_precision
                                     ),
                                 ),
                                 LE(
-                                    self.flows[k][0] + diff_flows,
+                                    self.pgen[gen_id][t],
                                     float(
-                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                            cfg.MAX_FLOW
-                                        ]
+                                        self.forecasted_states[cfg.GEN_PROD][t][gen_id]
+                                        + self.float_precision
                                     ),
                                 ),
-                            ),
+                            )
                         )
-                        action.add_effect(
-                            self.congestions[k][0],
-                            False,
-                            condition=And(
-                                LT(
-                                    self.flows[k][0] + diff_flows,
-                                    float(
-                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                            cfg.MAX_FLOW
-                                        ]
+                        action.add_effect(self.pgen[gen_id][t], i)
+                        for k in range(self.nb_transmission_lines):
+                            diff_flows = float(
+                                round(
+                                    self.ptdf[k][connected_bus]
+                                    * (
+                                        i
+                                        - float(
+                                            self.forecasted_states[cfg.GEN_PROD][t][
+                                                gen_id
+                                            ]
+                                        )
+                                    ),
+                                    self.nb_digits,
+                                )
+                            )
+                            action.add_increase_effect(
+                                self.flows[k][t],
+                                diff_flows,
+                            )
+                            action.add_effect(
+                                self.congestions[k][t],
+                                True,
+                                condition=Or(
+                                    GE(
+                                        self.flows[k][t] + diff_flows,
+                                        float(
+                                            self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                                cfg.MAX_FLOW
+                                            ]
+                                        ),
+                                    ),
+                                    LE(
+                                        self.flows[k][t] + diff_flows,
+                                        float(
+                                            -self.grid_params[cfg.TRANSMISSION_LINES][
+                                                k
+                                            ][cfg.MAX_FLOW]
+                                        ),
                                     ),
                                 ),
-                                GT(
-                                    self.flows[k][0] + diff_flows,
-                                    float(
-                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                            cfg.MAX_FLOW
-                                        ]
+                            )
+                            action.add_effect(
+                                self.congestions[k][t],
+                                False,
+                                condition=And(
+                                    LT(
+                                        self.flows[k][t] + diff_flows,
+                                        float(
+                                            self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                                cfg.MAX_FLOW
+                                            ]
+                                        ),
+                                    ),
+                                    GT(
+                                        self.flows[k][t] + diff_flows,
+                                        float(
+                                            -self.grid_params[cfg.TRANSMISSION_LINES][
+                                                k
+                                            ][cfg.MAX_FLOW]
+                                        ),
                                     ),
                                 ),
-                            ),
+                            )
+                        action.add_decrease_effect(
+                            self.pgen[self.slack_id][t],
+                            i - float(self.forecasted_states[cfg.GEN_PROD][t][gen_id]),
                         )
-                    action.add_decrease_effect(
-                        self.pgen[self.slack_id][0],
-                        i - float(self.forecasted_states[cfg.GEN_PROD][0][gen_id]),
-                    )
-                # for horizon > 1
-                # TODO
         return actions_costs
 
     def create_sto_actions(self) -> dict[str, float]:
@@ -269,152 +301,162 @@ class UnifiedPlanningProblem:
         self.psto_actions = []
         actions_costs = {}
 
-        for sto_id in range(self.nb_storages):
-            soc_max = int(self.grid_params[cfg.STORAGES][cfg.EMAX][sto_id])
-            soc_min = int(self.grid_params[cfg.STORAGES][cfg.EMIN][sto_id])
-            pmax_charge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][sto_id]
-            pmax_discharge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_ABSORB][
-                sto_id
-            ]
-            charging_efficiency = self.grid_params[cfg.STORAGES][
-                cfg.CHARGING_EFFICIENCY
-            ][sto_id]
-            discharging_efficiency = self.grid_params[cfg.STORAGES][
-                cfg.DISCHARGING_EFFICIENCY
-            ][sto_id]
-            connected_bus = int(
-                self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][sto_id]
-            ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][sto_id])
+        for t in range(self.tactical_horizon):
+            for sto_id in range(self.nb_storages):
+                soc_max = int(self.grid_params[cfg.STORAGES][cfg.EMAX][sto_id])
+                soc_min = int(self.grid_params[cfg.STORAGES][cfg.EMIN][sto_id])
+                pmax_charge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][
+                    sto_id
+                ]
+                pmax_discharge = self.grid_params[cfg.STORAGES][
+                    cfg.STORAGE_MAX_P_ABSORB
+                ][sto_id]
+                charging_efficiency = self.grid_params[cfg.STORAGES][
+                    cfg.CHARGING_EFFICIENCY
+                ][sto_id]
+                discharging_efficiency = self.grid_params[cfg.STORAGES][
+                    cfg.DISCHARGING_EFFICIENCY
+                ][sto_id]
+                connected_bus = int(
+                    self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][sto_id]
+                ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][sto_id])
 
-            if charging_efficiency == 0 or discharging_efficiency == 0:
-                self.logger.warning(
-                    f"Storage: {sto_id} has 0 charge or discharge efficiency, no action created!"
-                )
-                continue
-            for i in np.linspace(soc_min, soc_max + 1, 10 * (soc_max - soc_min)):
-                if not (
-                    self.initial_states[cfg.STO_CHARGE][sto_id]
-                    >= i - pmax_charge * self.time_step / 60 / charging_efficiency
-                    and self.initial_states[cfg.STO_CHARGE][sto_id]
-                    <= i + pmax_discharge * self.time_step / 60 * discharging_efficiency
-                ):
+                if charging_efficiency == 0 or discharging_efficiency == 0:
                     continue
 
-                target_delta_soc = i - self.initial_states[cfg.STO_CHARGE][sto_id]
-                if target_delta_soc > 0:
-                    target_pcharge = (
-                        (60 / self.time_step) * target_delta_soc / charging_efficiency
-                    )
-                    target_pdischarge = 0
-                    self.logger.debug(f"Action is to charge off: {target_pcharge}")
-                elif target_delta_soc < 0:
-                    target_pdischarge = (
-                        -(60 / self.time_step)
-                        * target_delta_soc
-                        * discharging_efficiency
-                    )
-                    target_pcharge = 0
-                    self.logger.debug(
-                        f"Action sto_target_{sto_id}_{0}_{i} is to discharge off: {target_pdischarge}"
-                    )
+                if t == 0:
+                    states = self.initial_states
                 else:
-                    target_pdischarge = 0
-                    target_pcharge = 0
+                    states = self.forecasted_states[t - 1]
 
-                self.psto_actions.append(
-                    InstantaneousAction(f"sto_target_{sto_id}_{0}_{i}")
-                )
-                action = self.psto_actions[-1]
+                for i in np.linspace(soc_min, soc_max + 1, 10 * (soc_max - soc_min)):
+                    if not (
+                        states[cfg.STO_CHARGE][sto_id]
+                        >= i - pmax_charge * self.time_step / 60 / charging_efficiency
+                        and states[cfg.STO_CHARGE][sto_id]
+                        <= i
+                        + pmax_discharge * self.time_step / 60 * discharging_efficiency
+                    ):
+                        continue
 
-                actions_costs[action] = float(
-                    abs(target_delta_soc)
-                    * self.grid_params[cfg.STORAGES][cfg.STORAGE_COST_PER_MW][sto_id]
-                )
-                action.add_precondition(
-                    And(
-                        GE(
-                            self.psto[sto_id][0],
-                            float(
-                                self.forecasted_states[cfg.STO_CHARGE][0][sto_id]
-                                - self.float_precision
-                            ),
-                        ),
-                        LE(
-                            self.psto[sto_id][0],
-                            float(
-                                self.forecasted_states[cfg.STO_CHARGE][0][sto_id]
-                                + self.float_precision
-                            ),
-                        ),
-                    )
-                )
-                action.add_effect(self.psto[sto_id][0], i)
-
-                for k in range(self.nb_transmission_lines):
-                    diff_flows = float(
-                        round(
-                            self.ptdf[k][connected_bus]
-                            * (-target_pcharge + target_pdischarge),
-                            self.nb_digits,
+                    target_delta_soc = i - states[cfg.STO_CHARGE][sto_id]
+                    if target_delta_soc > 0:
+                        target_pcharge = (
+                            (60 / self.time_step)
+                            * target_delta_soc
+                            / charging_efficiency
                         )
+                        target_pdischarge = 0
+                    elif target_delta_soc < 0:
+                        target_pdischarge = (
+                            -(60 / self.time_step)
+                            * target_delta_soc
+                            * discharging_efficiency
+                        )
+                        target_pcharge = 0
+                    else:
+                        target_pdischarge = 0
+                        target_pcharge = 0
+
+                    self.psto_actions.append(
+                        InstantaneousAction(f"sto_target_{sto_id}_{t}_{i}")
                     )
-                    action.add_increase_effect(self.flows[k][0], diff_flows)
-                    action.add_effect(
-                        self.congestions[k][0],
-                        True,
-                        condition=Or(
+                    action = self.psto_actions[-1]
+                    actions_costs[action] = float(
+                        abs(target_delta_soc)
+                        * self.grid_params[cfg.STORAGES][cfg.STORAGE_COST_PER_MW][
+                            sto_id
+                        ]
+                    )
+                    action.add_precondition(
+                        Equals(self.curr_step, t),
+                    )
+                    action.add_precondition(
+                        And(
                             GE(
-                                self.flows[k][0] + diff_flows,
+                                self.psto[sto_id][t],
                                 float(
-                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                        cfg.MAX_FLOW
-                                    ]
+                                    self.forecasted_states[cfg.STO_CHARGE][t][sto_id]
+                                    - self.float_precision
                                 ),
                             ),
                             LE(
-                                self.flows[k][0] + diff_flows,
+                                self.psto[sto_id][t],
                                 float(
-                                    -self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                        cfg.MAX_FLOW
-                                    ]
+                                    self.forecasted_states[cfg.STO_CHARGE][t][sto_id]
+                                    + self.float_precision
                                 ),
                             ),
-                        ),
+                        )
                     )
-                    action.add_effect(
-                        self.congestions[k][0],
-                        False,
-                        condition=And(
-                            LT(
-                                self.flows[k][0] + diff_flows,
-                                float(
-                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                        cfg.MAX_FLOW
-                                    ]
+                    action.add_effect(self.psto[sto_id][t], i)
+
+                    for k in range(self.nb_transmission_lines):
+                        diff_flows = float(
+                            round(
+                                self.ptdf[k][connected_bus]
+                                * (-target_pcharge + target_pdischarge),
+                                self.nb_digits,
+                            )
+                        )
+                        action.add_increase_effect(self.flows[k][t], diff_flows)
+                        action.add_effect(
+                            self.congestions[k][t],
+                            True,
+                            condition=Or(
+                                GE(
+                                    self.flows[k][t] + diff_flows,
+                                    float(
+                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
+                                ),
+                                LE(
+                                    self.flows[k][t] + diff_flows,
+                                    float(
+                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
                                 ),
                             ),
-                            GT(
-                                self.flows[k][0] + diff_flows,
-                                float(
-                                    -self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                        cfg.MAX_FLOW
-                                    ]
+                        )
+                        action.add_effect(
+                            self.congestions[k][t],
+                            False,
+                            condition=And(
+                                LT(
+                                    self.flows[k][t] + diff_flows,
+                                    float(
+                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
+                                ),
+                                GT(
+                                    self.flows[k][t] + diff_flows,
+                                    float(
+                                        -self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    ),
                                 ),
                             ),
-                        ),
+                        )
+                    action.add_decrease_effect(
+                        self.pgen[self.slack_id][t],
+                        -target_pcharge + target_pdischarge,
                     )
-                action.add_decrease_effect(
-                    self.pgen[self.slack_id][0],
-                    -target_pcharge + target_pdischarge,
-                )
         return actions_costs
 
     def create_actions(self):
         """Create actions for the problem."""
         gen_costs = self.create_gen_actions()
         sto_costs = self.create_sto_actions()
+        advance_step_cost = self.create_advance_step_action()
 
-        self.actions_costs = {**gen_costs, **sto_costs}
+        self.actions_costs = {**gen_costs, **sto_costs, **advance_step_cost}
 
     def create_problem(self):
         """Create the problem to solve."""
@@ -434,9 +476,12 @@ class UnifiedPlanningProblem:
                 problem.add_fluent(self.congestions[k][t])
                 problem.add_fluent(self.flows[k][t])
 
+        problem.add_fluent(self.curr_step)
+
         # add actions
         problem.add_actions(self.pgen_actions)
         problem.add_actions(self.psto_actions)
+        problem.add_action(self.advance_step_action)
 
         # add initial states
         for gen_id in range(self.nb_gens):
@@ -469,15 +514,21 @@ class UnifiedPlanningProblem:
                     ),
                 )
 
+        problem.set_initial_value(self.curr_step, 0)
+
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
         problem.add_quality_metric(self.quality_metric)
 
-        goals = [
+        goal_1 = [
             Iff(self.congestions[k][t], False)
             for k in range(self.nb_transmission_lines)
             for t in range(self.tactical_horizon)
-        ]  # is it too restrictive? To update
+        ]  # is it too restrictive? Maybe to update
+
+        goal_2 = [Equals(self.curr_step, self.tactical_horizon - 1)]
+
+        goals = goal_1 + goal_2
 
         problem.add_goal(And(goals))
 
@@ -492,10 +543,10 @@ class UnifiedPlanningProblem:
         # upp problem, "upp" stands for unified planning problem
         with open(pjoin(self.log_dir, upp_file), "w") as f:
             f.write(
-                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.psto)+ compute_size_array(self.congestions) + compute_size_array(self.flows)}\n"
+                f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.psto)+ compute_size_array(self.congestions) + compute_size_array(self.flows) + 1}\n"
             )
             f.write(
-                f"number of actions: {len(self.pgen_actions) + len(self.psto_actions)}\n"
+                f"number of actions: {len(self.pgen_actions) + len(self.psto_actions) + 1}\n"
             )
             f.write(self.problem.__str__())
         f.close()
@@ -555,6 +606,9 @@ class UnifiedPlanningProblem:
                             )
                             self.logger.debug(
                                 f"\tgen slack new value: {[float(new_state.get_value(self.pgen_exp[self.slack_id][t]).constant_value()) for t in range(self.tactical_horizon)]}"
+                            )
+                            self.logger.debug(
+                                f"\tcurrent step new value: {float(new_state.get_value(self.curr_step_exp).constant_value())}"
                             )
                             minimize_cost_value = evaluate_quality_metric(
                                 simulator,

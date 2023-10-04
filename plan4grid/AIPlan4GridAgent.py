@@ -176,7 +176,9 @@ class AIPlan4GridAgent:
 
         simulated_observations = [
             self.curr_obs.simulate(do_nothing_action, i)[0]
-            for i in range(self.tactical_horizon)
+            for i in range(
+                1, self.tactical_horizon + 1
+            )  # ugly but we have to start at 1 because simulate(action, 0) = simulate(action, 1)
         ]
 
         forecasted_states = {
