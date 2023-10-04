@@ -16,7 +16,7 @@ with open(path.join(HERE, "README.md"), encoding="utf-8") as f:
 # This call to setup() does all the work
 setup(
     name="plan4grid",
-    version="0.0.1",
+    version="0.0.2",
     description="Demo library",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -26,7 +26,7 @@ setup(
     license="",
     classifiers=[
         "Intended Audience :: Developers",
-        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
     packages=["plan4grid"],
