@@ -75,12 +75,12 @@ def routine(agent: AIPlan4GridAgent):
     nb_steps = STRATEGIC_HORIZON // TACTICAL_HORIZON
     print(f"Running the agent on scenario {agent.scenario_id} for {nb_steps} steps...")
     cumulative_reward = 0
-    for i in range(nb_steps):
-        print(f"\n* Episode {i}:")
+    for i in range(1, nb_steps + 1):
+        print(f"\n* Episode {i}/{nb_steps}:")
         obs, reward, done, *_ = agent.progress(i)
         print(f"\tReward: {reward}")
         cumulative_reward += reward
-        if done and i != (nb_steps - 1):
+        if done and i != (nb_steps):
             print("The episode is done before the end of the strategic horizon!")
             break
     time.sleep(2)
