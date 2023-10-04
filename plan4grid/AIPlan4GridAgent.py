@@ -148,7 +148,8 @@ class AIPlan4GridAgent:
             )
 
         self.env = env
-        self.env.set_id(scenario_id)
+        self.scenario_id = scenario_id
+        self.env.set_id(self.scenario_id)
         self.initial_topology = deepcopy(self.env).reset().connectivity_matrix()
         self.curr_obs = self.env.reset()
         self.tactical_horizon = tactical_horizon
@@ -158,6 +159,14 @@ class AIPlan4GridAgent:
         self.time_step = self.curr_obs.delta_time  # time step in minutes
         self.solver = solver
         self.debug = debug
+
+    def print_summary(self):
+        """Print the parameters of the agent."""
+        print("Parameters of the agent:")
+        print(f"\tTactical horizon: {self.tactical_horizon}")
+        print(f"\tTime step: {self.time_step} minutes")
+        print(f"\tSolver: {self.solver}")
+        print(f"\tDebug mode: {self.debug}\n")
 
     def display_grid(self):
         """Display the current state of the grid."""
@@ -181,29 +190,16 @@ class AIPlan4GridAgent:
             )  # ugly but we have to start at 1 because simulate(action, 0) = simulate(action, 1)
         ]
 
-        forecasted_states = {
-            cfg.GEN_PROD: np.array(
-                [simulated_observations[t].gen_p for t in range(self.tactical_horizon)]
-            ),
-            cfg.LOADS: np.array(
-                [simulated_observations[t].load_p for t in range(self.tactical_horizon)]
-            ),
-            cfg.STO_CHARGE: np.array(
-                [
-                    simulated_observations[t].storage_charge
-                    for t in range(self.tactical_horizon)
-                ]
-            ),
-            cfg.FLOWS: np.array(
-                [simulated_observations[t].p_or for t in range(self.tactical_horizon)]
-            ),
-            cfg.CONGESTED_STATUS: np.array(
-                [
-                    simulated_observations[t].rho >= 1
-                    for t in range(self.tactical_horizon)
-                ]
-            ),
-        }
+        forecasted_states = [
+            {
+                cfg.GEN_PROD: simulated_observations[t].gen_p,
+                cfg.LOADS: simulated_observations[t].load_p,
+                cfg.STO_CHARGE: simulated_observations[t].storage_charge,
+                cfg.FLOWS: simulated_observations[t].p_or,
+                cfg.CONGESTED_STATUS: simulated_observations[t].rho >= 1,
+            }
+            for t in range(self.tactical_horizon)
+        ]
 
         initial_states = {
             cfg.GEN_PROD: self.curr_obs.gen_p,
@@ -227,7 +223,11 @@ class AIPlan4GridAgent:
         vprint = verbose_print(verbose)
 
         congested_now = np.any(self.curr_obs.rho >= 1)
-        congested_future = np.any(self.forecasted_states[cfg.CONGESTED_STATUS])
+        forecasted_congestions = [
+            self.forecasted_states[t][cfg.CONGESTED_STATUS]
+            for t in range(self.tactical_horizon)
+        ]
+        congested_future = np.any(forecasted_congestions)
 
         def _print_congested_line(line, flow, max_flow, time_step):
             vprint(
@@ -250,18 +250,16 @@ class AIPlan4GridAgent:
 
         if congested_future and self.tactical_horizon > 1:
             vprint("\tCongestion detected in the future!")
-            first_congestion_at = np.where(
-                self.forecasted_states[cfg.CONGESTED_STATUS]
-            )[0][0]
+            first_congestion_at = np.where(forecasted_congestions)[0][0]
             congested_lines = np.where(
-                self.forecasted_states[cfg.CONGESTED_STATUS][first_congestion_at]
+                self.forecasted_states[first_congestion_at][cfg.CONGESTED_STATUS]
             )[0]
             for line in congested_lines:
                 max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][
                     cfg.MAX_FLOW
                 ]
-                forecasted_flow = self.forecasted_states[cfg.FLOWS][
-                    first_congestion_at
+                forecasted_flow = self.forecasted_states[first_congestion_at][
+                    cfg.FLOWS
                 ][line]
                 _print_congested_line(
                     line,
@@ -321,12 +319,15 @@ class AIPlan4GridAgent:
         # first we create the list of dict that will be returned
         template_dict = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
         g2op_actions = [deepcopy(template_dict)]
-        time_steps = [0]
         # fetch the slack bus id
         slack_id = np.where(self.static_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
         # then we parse the up actions
         for action in up_actions:
             action = action.action.name
+            if action == cfg.ADVANCE_STEP_ACTION:
+                new_dict = deepcopy(template_dict)
+                g2op_actions.append(new_dict)
+                continue
             # we split the string to extract the information
             action_info = action.split("_")
             # we get the type of the action
@@ -337,11 +338,6 @@ class AIPlan4GridAgent:
             time_step = int(action_info[3])
             # we get the value of the action
             value = float(action_info[4])
-
-            time_steps.append(time_step)
-            if time_step != time_steps[-1]:
-                new_dict = deepcopy(template_dict)
-                g2op_actions.append(new_dict)
 
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:

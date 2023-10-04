@@ -208,14 +208,14 @@ class UnifiedPlanningProblem:
                                 GE(
                                     self.pgen[gen_id][t],
                                     float(
-                                        self.forecasted_states[cfg.GEN_PROD][t][gen_id]
+                                        self.forecasted_states[t][cfg.GEN_PROD][gen_id]
                                         - self.float_precision
                                     ),
                                 ),
                                 LE(
                                     self.pgen[gen_id][t],
                                     float(
-                                        self.forecasted_states[cfg.GEN_PROD][t][gen_id]
+                                        self.forecasted_states[t][cfg.GEN_PROD][gen_id]
                                         + self.float_precision
                                     ),
                                 ),
@@ -229,7 +229,7 @@ class UnifiedPlanningProblem:
                                     * (
                                         i
                                         - float(
-                                            self.forecasted_states[cfg.GEN_PROD][t][
+                                            self.forecasted_states[t][cfg.GEN_PROD][
                                                 gen_id
                                             ]
                                         )
@@ -287,7 +287,7 @@ class UnifiedPlanningProblem:
                             )
                         action.add_decrease_effect(
                             self.pgen[self.slack_id][t],
-                            i - float(self.forecasted_states[cfg.GEN_PROD][t][gen_id]),
+                            i - float(self.forecasted_states[t][cfg.GEN_PROD][gen_id]),
                         )
         return actions_costs
 
@@ -376,14 +376,14 @@ class UnifiedPlanningProblem:
                             GE(
                                 self.psto[sto_id][t],
                                 float(
-                                    self.forecasted_states[cfg.STO_CHARGE][t][sto_id]
+                                    self.forecasted_states[t][cfg.STO_CHARGE][sto_id]
                                     - self.float_precision
                                 ),
                             ),
                             LE(
                                 self.psto[sto_id][t],
                                 float(
-                                    self.forecasted_states[cfg.STO_CHARGE][t][sto_id]
+                                    self.forecasted_states[t][cfg.STO_CHARGE][sto_id]
                                     + self.float_precision
                                 ),
                             ),
@@ -488,27 +488,27 @@ class UnifiedPlanningProblem:
             for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.pgen[gen_id][t],
-                    float(self.forecasted_states[cfg.GEN_PROD][t][gen_id]),
+                    float(self.forecasted_states[t][cfg.GEN_PROD][gen_id]),
                 )
 
         for sto_id in range(self.nb_storages):
             for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.psto[sto_id][t],
-                    float(self.forecasted_states[cfg.STO_CHARGE][t][sto_id]),
+                    float(self.forecasted_states[t][cfg.STO_CHARGE][sto_id]),
                 )
 
         for k in range(self.nb_transmission_lines):
             for t in range(self.tactical_horizon):
                 problem.set_initial_value(
                     self.congestions[k][t],
-                    bool(self.forecasted_states[cfg.CONGESTED_STATUS][t][k]),
+                    bool(self.forecasted_states[t][cfg.CONGESTED_STATUS][k]),
                 )
                 problem.set_initial_value(
                     self.flows[k][t],
                     float(
                         round(
-                            self.forecasted_states[cfg.FLOWS][t][k],
+                            self.forecasted_states[t][cfg.FLOWS][k],
                             self.nb_digits,
                         )
                     ),
@@ -579,7 +579,7 @@ class UnifiedPlanningProblem:
                 return []
             else:
                 self.logger.info(f"Status: {output.status}")
-                self.logger.info(f"Plan found: {plan}\n")
+                self.logger.info(f"{plan}\n")
                 if simulate and len(plan.actions) > 0:
                     self.logger.debug("Simulating plan...")
                     with SequentialSimulator(problem=self.problem) as simulator:

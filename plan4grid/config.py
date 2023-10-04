@@ -67,3 +67,4 @@ WARN_FILE = "warning.log"
 
 GENERATOR_ACTION_PREFIX = "gen"
 STORAGE_ACTION_PREFIX = "sto"
+ADVANCE_STEP_ACTION = "advance_step"
