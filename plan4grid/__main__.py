@@ -72,6 +72,7 @@ def parse_ini(ini_file_path: str) -> dict:
 def routine(agent: AIPlan4GridAgent):
     """Routine for the agent."""
     agent.print_summary()
+    agent.print_grid_properties()
     nb_steps = STRATEGIC_HORIZON // TACTICAL_HORIZON
     print(f"Running the agent on scenario {agent.scenario_id} for {nb_steps} steps...")
     cumulative_reward = 0
