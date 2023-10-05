@@ -168,6 +168,21 @@ class AIPlan4GridAgent:
         print(f"\tSolver: {self.solver}")
         print(f"\tDebug mode: {self.debug}\n")
 
+    def print_grid_properties(self):
+        """Print the properties of the grid."""
+        grid_properties = {**self.static_properties, **self.mutable_properties}
+        print("Properties of the grid:")
+        print(f"\tGenerators:")
+        for key, value in grid_properties[cfg.GENERATORS].items():
+            print(f"\t\t{key}: {value}")
+        print(f"\tStorages:")
+        for key, value in grid_properties[cfg.STORAGES].items():
+            print(f"\t\t{key}: {value}")
+        print(f"\tTransmission lines:")
+        for key, value in grid_properties[cfg.TRANSMISSION_LINES].items():
+            print(f"\t\t{key}: {value}")
+        print()
+
     def display_grid(self):
         """Display the current state of the grid."""
 
