@@ -159,8 +159,6 @@ class UnifiedPlanningProblem:
             dict[str, float]: dictionary of generators actions and their costs
         """
         actions_costs = {}
-
-        # Creating actions
         self.pgen_actions = []
 
         for t in range(self.tactical_horizon):
@@ -171,31 +169,35 @@ class UnifiedPlanningProblem:
                 ):
                     pmax = int(self.grid_params[cfg.GENERATORS][cfg.PMAX][gen_id])
                     pmin = int(self.grid_params[cfg.GENERATORS][cfg.PMIN][gen_id])
+
+                    ramp_up = self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
+                    ramp_down = self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][
+                        gen_id
+                    ]
+
                     connected_bus = int(
                         self.grid_params[cfg.GENERATORS][cfg.GEN_BUS][gen_id]
                     ) * int(self.grid_params[cfg.GENERATORS][cfg.GEN_TO_SUBID][gen_id])
+
                     if t == 0:
-                        states = self.initial_states
+                        curr_state = self.initial_states[cfg.GEN_PROD][gen_id]
                     else:
-                        states = self.forecasted_states[t - 1]
-                    for i in range(pmin, pmax + 1, 1):
-                        if not (
-                            float(states[cfg.GEN_PROD][gen_id])
-                            >= i
-                            - self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][gen_id]
-                            and float(states[cfg.GEN_PROD][gen_id])
-                            <= i
-                            + self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][
-                                gen_id
-                            ]
-                        ):
+                        curr_state = self.pgen[gen_id][t - 1]
+
+                    for i in np.linspace(
+                        curr_state - ramp_down,
+                        curr_state + ramp_up,
+                        2,
+                    ):
+                        if not (i <= pmax and i >= pmin):
                             continue
+
                         self.pgen_actions.append(
                             InstantaneousAction(f"gen_target_{gen_id}_{t}_{i}")
                         )
                         action = self.pgen_actions[-1]
                         actions_costs[action] = float(
-                            abs(i - states[cfg.GEN_PROD][gen_id])
+                            abs(i - curr_state)
                             * self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][
                                 gen_id
                             ]
@@ -305,41 +307,48 @@ class UnifiedPlanningProblem:
             for sto_id in range(self.nb_storages):
                 soc_max = int(self.grid_params[cfg.STORAGES][cfg.EMAX][sto_id])
                 soc_min = int(self.grid_params[cfg.STORAGES][cfg.EMIN][sto_id])
-                pmax_charge = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][
-                    sto_id
-                ]
-                pmax_discharge = self.grid_params[cfg.STORAGES][
-                    cfg.STORAGE_MAX_P_ABSORB
-                ][sto_id]
+
                 charging_efficiency = self.grid_params[cfg.STORAGES][
                     cfg.CHARGING_EFFICIENCY
                 ][sto_id]
                 discharging_efficiency = self.grid_params[cfg.STORAGES][
                     cfg.DISCHARGING_EFFICIENCY
                 ][sto_id]
-                connected_bus = int(
-                    self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][sto_id]
-                ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][sto_id])
 
                 if charging_efficiency == 0 or discharging_efficiency == 0:
                     continue
 
-                if t == 0:
-                    states = self.initial_states
-                else:
-                    states = self.forecasted_states[t - 1]
+                pmax_charge = (
+                    self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][sto_id]
+                    * self.time_step
+                    / 60
+                    / charging_efficiency
+                )
+                pmax_discharge = (
+                    self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_ABSORB][sto_id]
+                    * self.time_step
+                    / 60
+                    * discharging_efficiency
+                )
 
-                for i in np.linspace(soc_min, soc_max + 1, 10 * (soc_max - soc_min)):
-                    if not (
-                        states[cfg.STO_CHARGE][sto_id]
-                        >= i - pmax_charge * self.time_step / 60 / charging_efficiency
-                        and states[cfg.STO_CHARGE][sto_id]
-                        <= i
-                        + pmax_discharge * self.time_step / 60 * discharging_efficiency
-                    ):
+                connected_bus = int(
+                    self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][sto_id]
+                ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][sto_id])
+
+                if t == 0:
+                    curr_state = self.initial_states[cfg.STO_CHARGE][sto_id]
+                else:
+                    curr_state = self.psto[t - 1]
+
+                for i in np.linspace(
+                    curr_state - pmax_discharge,
+                    curr_state + pmax_charge,
+                    2,
+                ):
+                    if not (i <= soc_max and i >= soc_min):
                         continue
 
-                    target_delta_soc = i - states[cfg.STO_CHARGE][sto_id]
+                    target_delta_soc = i - curr_state
                     if target_delta_soc > 0:
                         target_pcharge = (
                             (60 / self.time_step)
@@ -390,7 +399,6 @@ class UnifiedPlanningProblem:
                         )
                     )
                     action.add_effect(self.psto[sto_id][t], i)
-
                     for k in range(self.nb_transmission_lines):
                         diff_flows = float(
                             round(
@@ -450,8 +458,25 @@ class UnifiedPlanningProblem:
                     )
         return actions_costs
 
+    def update_max_flows(self):
+        for k in range(self.nb_transmission_lines):
+            max_flow = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]
+            for t in range(self.tactical_horizon):
+                forecasted_flow = self.forecasted_states[t][cfg.FLOWS][k]
+                if (
+                    not bool(self.forecasted_states[t][cfg.CONGESTED_STATUS][k])
+                    and forecasted_flow > max_flow
+                ):
+                    self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW] = max(
+                        forecasted_flow, max_flow
+                    )
+                    self.logger.warning(
+                        f"\tMax flow updated for line: {k} from value {max_flow} to new value {forecasted_flow}"
+                    )
+
     def create_actions(self):
         """Create actions for the problem."""
+        self.update_max_flows()
         gen_costs = self.create_gen_actions()
         sto_costs = self.create_sto_actions()
         advance_step_cost = self.create_advance_step_action()
