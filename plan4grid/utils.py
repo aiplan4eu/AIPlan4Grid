@@ -1,4 +1,5 @@
 import logging
+import shutil
 import sys
 from os.path import join as pjoin
 
@@ -57,3 +58,11 @@ def strtobool(val: str) -> bool:
         return False
     else:
         raise ValueError("invalid truth value %r" % (val,))
+
+
+def clean_logs():
+    """Remove recursively the log directory if it exists."""
+    try:
+        shutil.rmtree(cfg.LOG_DIR)
+    except FileNotFoundError:
+        pass
