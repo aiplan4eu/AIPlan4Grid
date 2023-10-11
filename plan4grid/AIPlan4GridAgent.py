@@ -343,47 +343,23 @@ class AIPlan4GridAgent:
                 new_dict = deepcopy(template_dict)
                 g2op_actions.append(new_dict)
                 continue
+
             # we split the string to extract the information
             action_info = action.split("_")
-            # we get the type of the action
             action_type = action_info[0]
-            # we get the id of the generator or the storage
-            id = int(action_info[2])
-            # we get the time step
-            time_step = int(action_info[3])
-            # we get the value of the action
-            value = float(action_info[4])
+            id = int(action_info[1])
+            value = float(action_info[2])
 
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
-                current_value = self.curr_obs.gen_p[id]
-                action_value = value - current_value
-                g2op_actions[-1][cfg.REDISPATCH].append((id, action_value))
+                g2op_actions[-1][cfg.REDISPATCH].append((id, value))
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
-                current_value = self.curr_obs.storage_charge[id]
-                delta_soc = value - current_value
-                if delta_soc >= 0:
-                    action_value = (
-                        (60 / self.time_step)
-                        * delta_soc
-                        / self.static_properties[cfg.STORAGES][cfg.CHARGING_EFFICIENCY][
-                            id
-                        ]
-                    )
-                else:
-                    action_value = (
-                        (60 / self.time_step)
-                        * delta_soc
-                        * self.static_properties[cfg.STORAGES][
-                            cfg.DISCHARGING_EFFICIENCY
-                        ][id]
-                    )
-                g2op_actions[-1][cfg.SET_STORAGE].append((id, action_value))
+                g2op_actions[-1][cfg.SET_STORAGE].append((id, value))
             else:
                 raise RuntimeError(
-                    "The action type is not valid, it should be either prod_target or storage_target"
+                    "The action type is not valid, it should be either prod_target or storage_target!"
                 )
-            g2op_actions[-1][cfg.REDISPATCH].append((slack_id, -action_value))
+            g2op_actions[-1][cfg.REDISPATCH].append((slack_id, -value))
         return g2op_actions
 
     def get_UP_actions(self, step: int, verbose: bool = True) -> list[ActionSpace]:
@@ -408,12 +384,14 @@ class AIPlan4GridAgent:
             self.forecasted_states,
             self.solver,
             problem_id=step,
+            debug=self.debug,
         )
-        vprint(f"\tSaving UP problem in {cfg.LOG_DIR}")
-        upp.save_problem()
+        if self.debug:
+            vprint(f"\tSaving UP problem in {cfg.LOG_DIR}")
+            upp.save_problem()
         vprint("\tSolving UP problem...")
         start = timer()
-        up_plan = upp.solve(simulate=self.debug)
+        up_plan = upp.solve()
         end = timer()
         vprint(f"\tProblem solved in {end - start} seconds")
         g2op_actions = [
@@ -448,8 +426,11 @@ class AIPlan4GridAgent:
         i = 0
         while i != self.tactical_horizon:
             all_zeros = not actions[i].to_vect().any()
+            if not all_zeros:
+                print(f"\tPerforming action {actions[i]}")
             obs, reward, done, info = self.env.step(actions[i])
             results.append((obs, reward, done, info))
+            self.curr_obs = results[-1][0]
             self.update_states()
             if all_zeros and (
                 self.check_congestions(verbose=False)
@@ -460,5 +441,4 @@ class AIPlan4GridAgent:
                 )
                 actions = [None in range(i + 1)] + self.get_UP_actions(step)
             i += 1
-        self.curr_obs = results[-1][0]
         return results[-1]
