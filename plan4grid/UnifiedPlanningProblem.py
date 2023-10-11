@@ -172,7 +172,7 @@ class UnifiedPlanningProblem:
         Returns:
             tuple[list[InstantaneousAction], dict[str, float]]: list of generators actions and their costs
         """
-        assert direction in ["increase", "decrease"]
+        assert direction in cfg.DIRECTIONS
         actions_costs = {}
         pgen_actions = []
 
@@ -198,7 +198,7 @@ class UnifiedPlanningProblem:
 
                     for i in np.linspace(0, ramp, nb_actions):
                         pgen_actions.append(
-                            InstantaneousAction(f"gen_{id}_{i}_{t}")
+                            InstantaneousAction(f"gen_{id}_{direction}_{i}_{t}")
                         )  # this action represents the increase or decrease of the setpoint of the generator by i MW at time t
                         action = pgen_actions[-1]
                         actions_costs[action] = i * float(
@@ -231,17 +231,12 @@ class UnifiedPlanningProblem:
                             new_setpoint = Minus(curr_state, i)
                         action.add_effect(self.pgen[id][t], new_setpoint)
                         for k in range(self.nb_transmission_lines):
-                            diff_flows = float(
-                                round(
-                                    self.ptdf[k][connected_bus]
-                                    * (
-                                        new_setpoint
-                                        - float(
-                                            self.forecasted_states[t][cfg.GEN_PROD][id]
-                                        )
-                                    ),
-                                    self.nb_digits,
-                                )
+                            diff_flows = Times(
+                                self.ptdf[k][connected_bus],
+                                Minus(
+                                    new_setpoint,
+                                    float(self.forecasted_states[t][cfg.GEN_PROD][id]),
+                                ),
                             )
                             action.add_increase_effect(
                                 self.flows[k][t],
@@ -314,7 +309,7 @@ class UnifiedPlanningProblem:
         Returns:
             tuple[list[InstantaneousAction], dict[str, float]]: list of storages actions and their costs
         """
-        assert direction in ["increase", "decrease"]
+        assert direction in cfg.DIRECTIONS
         actions_costs = {}
         psto_actions = []
 
@@ -343,7 +338,7 @@ class UnifiedPlanningProblem:
                 # note that here the ramp is also in MW
                 for i in np.linspace(0, ramp, nb_actions):
                     psto_actions.append(
-                        InstantaneousAction(f"sto_{id}_{i}_{t}")
+                        InstantaneousAction(f"sto_{id}_{direction}_{i}_{t}")
                     )  # this action represents the charge or discharge of the storage by i MW at time t
                     action = psto_actions[-1]
 

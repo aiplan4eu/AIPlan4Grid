@@ -200,9 +200,7 @@ class AIPlan4GridAgent:
 
         simulated_observations = [
             self.curr_obs.simulate(do_nothing_action, i)[0]
-            for i in range(
-                1, self.tactical_horizon + 1
-            )  # ugly but we have to start at 1 because simulate(action, 0) = simulate(action, 1)
+            for i in range(self.tactical_horizon)
         ]
 
         forecasted_states = [
@@ -343,22 +341,26 @@ class AIPlan4GridAgent:
                 new_dict = deepcopy(template_dict)
                 g2op_actions.append(new_dict)
                 continue
-
             # we split the string to extract the information
             action_info = action.split("_")
             action_type = action_info[0]
             id = int(action_info[1])
-            value = float(action_info[2])
-
+            direction = action_info[2]
+            if direction == "increase":
+                value = float(action_info[3])
+            elif direction == "decrease":
+                value = -float(action_info[3])
+            else:
+                raise RuntimeError(
+                    f"The direction of the action is not valid, it should be either increase or decrease!"
+                )
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[-1][cfg.REDISPATCH].append((id, value))
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[-1][cfg.SET_STORAGE].append((id, value))
             else:
-                raise RuntimeError(
-                    "The action type is not valid, it should be either prod_target or storage_target!"
-                )
+                raise RuntimeError("The action type is not valid!")
             g2op_actions[-1][cfg.REDISPATCH].append((slack_id, -value))
         return g2op_actions
 

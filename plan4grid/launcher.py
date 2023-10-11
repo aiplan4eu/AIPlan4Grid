@@ -93,7 +93,9 @@ class Launcher:
             "load_p_handler": CSVHandler("load_p"),
             "gen_v_handler": DoNothingHandler("prod_v"),
             "load_q_handler": CSVHandler("load_q"),
-            "h_forecast": [h * self.time_step for h in range(self.tactical_horizon)],
+            "h_forecast": [
+                h * self.time_step for h in range(1, self.tactical_horizon + 1)
+            ],
             "gen_p_for_handler": handler("prod_p_forecasted"),
             "load_p_for_handler": handler("load_p_forecasted"),
             "load_q_for_handler": handler("load_q_forecasted"),
