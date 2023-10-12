@@ -250,7 +250,7 @@ class UnifiedPlanningProblem:
                                 * self.ptdf_threshold
                             ):
                                 self.logger.debug(
-                                    f"Effect of action {action} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                    f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
                                 )
                                 continue
                             action.add_increase_effect(
@@ -308,9 +308,9 @@ class UnifiedPlanningProblem:
                             - float(self.forecasted_states[t][cfg.GEN_PROD][id]),
                         )
                         if nb_lines_effects == 0:
-                            actions_costs.pop(action)
+                            actions_costs.popitem()
                             pgen_actions.pop()
-                            self.logger.debug(f"Action {action} is useless")
+                            self.logger.debug(f"Action {action.name} is useless")
         return pgen_actions, actions_costs
 
     def create_sto_actions(
@@ -408,7 +408,7 @@ class UnifiedPlanningProblem:
                             * self.ptdf_threshold
                         ):
                             self.logger.debug(
-                                f"Effect of action {action} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
                             )
                             continue
                         action.add_increase_effect(self.flows[k][t], diff_flows)
@@ -462,9 +462,9 @@ class UnifiedPlanningProblem:
                         new_soc,
                     )
                     if nb_lines_effects == 0:
-                        actions_costs.pop(action)
+                        actions_costs.popitem()
                         psto_actions.pop()
-                        self.logger.debug(f"Action {action} is useless")
+                        self.logger.debug(f"Action {action.name} is useless")
         return psto_actions, actions_costs
 
     def update_max_flows(self):
