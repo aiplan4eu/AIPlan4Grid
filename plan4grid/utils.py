@@ -2,6 +2,7 @@ import logging
 import shutil
 import sys
 from os.path import join as pjoin
+from unified_planning.shortcuts import GE, Minus, FNode
 
 import numpy as np
 
@@ -66,3 +67,18 @@ def clean_logs():
         shutil.rmtree(cfg.LOG_DIR)
     except FileNotFoundError:
         pass
+
+
+def _abs(expression: FNode) -> FNode:
+    """Absolute value of an UP expression.
+
+    Args:
+        expression (FNode): expression to take the absolute value of
+
+    Returns:
+        FNode: absolute value of the expression
+    """
+    if GE(expression, 0):
+        return expression
+    else:
+        return Minus(expression)

@@ -11,7 +11,7 @@ from unified_planning.engines.sequential_simulator import (
 from unified_planning.shortcuts import *
 
 import plan4grid.config as cfg
-from plan4grid.utils import compute_size_array, setup_logger
+from plan4grid.utils import compute_size_array, setup_logger, _abs
 
 
 class UnifiedPlanningProblem:
@@ -47,6 +47,7 @@ class UnifiedPlanningProblem:
 
         self.nb_digits = 6
         self.float_precision = 10**-self.nb_digits
+        self.ptdf_threshold = 0.01
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
         os.makedirs(self.log_dir, exist_ok=True)
@@ -201,6 +202,7 @@ class UnifiedPlanningProblem:
                             InstantaneousAction(f"gen_{id}_{direction}_{i}_{t}")
                         )  # this action represents the increase or decrease of the setpoint of the generator by i MW at time t
                         action = pgen_actions[-1]
+                        nb_lines_effects = 0
                         actions_costs[action] = i * float(
                             self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id]
                         )
@@ -238,10 +240,24 @@ class UnifiedPlanningProblem:
                                     float(self.forecasted_states[t][cfg.GEN_PROD][id]),
                                 ),
                             )
+                            if (
+                                _abs(diff_flows)
+                                <= float(
+                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                        cfg.MAX_FLOW
+                                    ]
+                                )
+                                * self.ptdf_threshold
+                            ):
+                                self.logger.debug(
+                                    f"Effect of action {action} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                )
+                                continue
                             action.add_increase_effect(
                                 self.flows[k][t],
                                 diff_flows,
                             )
+                            nb_lines_effects += 1
                             action.add_effect(
                                 self.congestions[k][t],
                                 True,
@@ -291,6 +307,10 @@ class UnifiedPlanningProblem:
                             new_setpoint
                             - float(self.forecasted_states[t][cfg.GEN_PROD][id]),
                         )
+                        if nb_lines_effects == 0:
+                            actions_costs.pop(action)
+                            pgen_actions.pop()
+                            self.logger.debug(f"Action {action} is useless")
         return pgen_actions, actions_costs
 
     def create_sto_actions(
@@ -341,11 +361,10 @@ class UnifiedPlanningProblem:
                         InstantaneousAction(f"sto_{id}_{direction}_{i}_{t}")
                     )  # this action represents the charge or discharge of the storage by i MW at time t
                     action = psto_actions[-1]
-
+                    nb_lines_effects = 0
                     actions_costs[action] = i * float(
                         self.grid_params[cfg.STORAGES][cfg.STORAGE_COST_PER_MW][id]
                     )
-
                     action.add_precondition(
                         Equals(self.curr_step, t),
                     )
@@ -379,7 +398,21 @@ class UnifiedPlanningProblem:
                             self.ptdf[k][connected_bus],
                             new_soc,
                         )
+                        if (
+                            _abs(diff_flows)
+                            <= float(
+                                self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                    cfg.MAX_FLOW
+                                ]
+                            )
+                            * self.ptdf_threshold
+                        ):
+                            self.logger.debug(
+                                f"Effect of action {action} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                            )
+                            continue
                         action.add_increase_effect(self.flows[k][t], diff_flows)
+                        nb_lines_effects += 1
                         action.add_effect(
                             self.congestions[k][t],
                             True,
@@ -428,6 +461,10 @@ class UnifiedPlanningProblem:
                         self.pgen[self.slack_id][t],
                         new_soc,
                     )
+                    if nb_lines_effects == 0:
+                        actions_costs.pop(action)
+                        psto_actions.pop()
+                        self.logger.debug(f"Action {action} is useless")
         return psto_actions, actions_costs
 
     def update_max_flows(self):
