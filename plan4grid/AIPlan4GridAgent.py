@@ -247,7 +247,6 @@ class AIPlan4GridAgent:
                 f"\t\tLine {line} is congested with a flow of {flow:.2f} MW,",
                 f"but have a maximum/minimum flow of +/- {max_flow:.2f} MW",
                 time_step,
-                "\n",
             )
 
         if congested_now:
@@ -433,6 +432,8 @@ class AIPlan4GridAgent:
             obs, reward, done, info = self.env.step(actions[i])
             results.append((obs, reward, done, info))
             self.curr_obs = results[-1][0]
+            if done:
+                break
             self.update_states()
             if all_zeros and (
                 self.check_congestions(verbose=False)

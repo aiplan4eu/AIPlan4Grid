@@ -5,3 +5,4 @@ pandapower==2.13.1
 unified-planning==1.0.0
 up-enhsp==0.0.15
 matplotlib
+ipykernel
