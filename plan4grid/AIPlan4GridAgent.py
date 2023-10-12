@@ -150,7 +150,9 @@ class AIPlan4GridAgent:
         self.env = env
         self.scenario_id = scenario_id
         self.env.set_id(self.scenario_id)
-        self.initial_topology = deepcopy(self.env).reset().connectivity_matrix()
+        self.initial_topology = (
+            deepcopy(self.env).reset().connectivity_matrix().astype(bool)
+        )
         self.curr_obs = self.env.reset()
         self.tactical_horizon = tactical_horizon
         self.static_properties = self.get_static_properties()
@@ -293,7 +295,7 @@ class AIPlan4GridAgent:
             bool: True if the topology has changed, False otherwise
         """
         vprint = verbose_print(verbose)
-        current_topology = self.curr_obs.connectivity_matrix()
+        current_topology = self.curr_obs.connectivity_matrix().astype(bool)
         topology_unchanged = np.array_equal(self.initial_topology, current_topology)
         if not topology_unchanged:
             vprint("\tTopology has changed!")
