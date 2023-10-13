@@ -343,6 +343,7 @@ class AIPlan4GridAgent:
                 g2op_actions[-1][cfg.REDISPATCH].append((slack_id, slack_value))
                 new_dict = deepcopy(template_dict)
                 g2op_actions.append(new_dict)
+                slack_value = 0
                 continue
             # we split the string to extract the information
             action_info = action.split("_")
