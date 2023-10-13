@@ -28,47 +28,25 @@ class AIPlan4GridAgent:
         # Generators parameters
         static_properties[cfg.GENERATORS][cfg.PMIN] = self.env.gen_pmin
         static_properties[cfg.GENERATORS][cfg.PMAX] = self.env.gen_pmax
-        static_properties[cfg.GENERATORS][
-            cfg.REDISPATCHABLE
-        ] = self.env.gen_redispatchable
+        static_properties[cfg.GENERATORS][cfg.REDISPATCHABLE] = self.env.gen_redispatchable
         static_properties[cfg.GENERATORS][cfg.MAX_RAMP_UP] = self.env.gen_max_ramp_up
-        static_properties[cfg.GENERATORS][
-            cfg.MAX_RAMP_DOWN
-        ] = self.env.gen_max_ramp_down
-        static_properties[cfg.GENERATORS][
-            cfg.GEN_COST_PER_MW
-        ] = self.env.gen_cost_per_MW
-        static_properties[cfg.GENERATORS][cfg.SLACK] = self.env.backend._grid.gen[
-            cfg.SLACK
-        ].to_numpy()
+        static_properties[cfg.GENERATORS][cfg.MAX_RAMP_DOWN] = self.env.gen_max_ramp_down
+        static_properties[cfg.GENERATORS][cfg.GEN_COST_PER_MW] = self.env.gen_cost_per_MW
+        static_properties[cfg.GENERATORS][cfg.SLACK] = self.env.backend._grid.gen[cfg.SLACK].to_numpy()
         if len(np.where(static_properties[cfg.GENERATORS][cfg.SLACK] == True)[0]) > 1:
-            raise RuntimeError(
-                "There should be only one slack bus, but there are several."
-            )
+            raise RuntimeError("There should be only one slack bus, but there are several.")
         static_properties[cfg.GENERATORS][cfg.GEN_TO_SUBID] = self.env.gen_to_subid
 
         # Storages parameters
         static_properties[cfg.STORAGES][cfg.EMAX] = self.env.storage_Emax
         static_properties[cfg.STORAGES][cfg.EMIN] = self.env.storage_Emin
         static_properties[cfg.STORAGES][cfg.LOSS] = self.env.storage_loss
-        static_properties[cfg.STORAGES][
-            cfg.CHARGING_EFFICIENCY
-        ] = self.env.storage_charging_efficiency
-        static_properties[cfg.STORAGES][
-            cfg.DISCHARGING_EFFICIENCY
-        ] = self.env.storage_discharging_efficiency
-        static_properties[cfg.STORAGES][
-            cfg.STORAGE_MAX_P_PROD
-        ] = self.env.storage_max_p_prod
-        static_properties[cfg.STORAGES][
-            cfg.STORAGE_MAX_P_ABSORB
-        ] = self.env.storage_max_p_absorb
-        static_properties[cfg.STORAGES][
-            cfg.STORAGE_COST_PER_MW
-        ] = self.env.storage_marginal_cost
-        static_properties[cfg.STORAGES][
-            cfg.STORAGE_TO_SUBID
-        ] = self.env.storage_to_subid
+        static_properties[cfg.STORAGES][cfg.CHARGING_EFFICIENCY] = self.env.storage_charging_efficiency
+        static_properties[cfg.STORAGES][cfg.DISCHARGING_EFFICIENCY] = self.env.storage_discharging_efficiency
+        static_properties[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD] = self.env.storage_max_p_prod
+        static_properties[cfg.STORAGES][cfg.STORAGE_MAX_P_ABSORB] = self.env.storage_max_p_absorb
+        static_properties[cfg.STORAGES][cfg.STORAGE_COST_PER_MW] = self.env.storage_marginal_cost
+        static_properties[cfg.STORAGES][cfg.STORAGE_TO_SUBID] = self.env.storage_to_subid
 
         return static_properties
 
@@ -79,18 +57,12 @@ class AIPlan4GridAgent:
         # Generators parameters
         self.static_properties[cfg.GENERATORS][cfg.GEN_BUS] = self.curr_obs.gen_bus
         # Storages parameters
-        self.static_properties[cfg.STORAGES][
-            cfg.STORAGE_BUS
-        ] = self.curr_obs.storage_bus
+        self.static_properties[cfg.STORAGES][cfg.STORAGE_BUS] = self.curr_obs.storage_bus
         # TODO: refactor this, not clean but not a priority
 
         max_flows = np.array(
             (
-                (
-                    self.env.backend.lines_or_pu_to_kv
-                    * self.curr_obs.thermal_limit
-                    / 1000
-                )
+                (self.env.backend.lines_or_pu_to_kv * self.curr_obs.thermal_limit / 1000)
                 * sqrt(3)  # triple phase
                 * cos(atan(0.4))
             ),
@@ -108,12 +80,8 @@ class AIPlan4GridAgent:
             }
 
         for tl_id in mutable_properties[cfg.TRANSMISSION_LINES].keys():
-            mutable_properties[cfg.TRANSMISSION_LINES][tl_id][
-                cfg.CONNECTED_STATUS
-            ] = self.curr_obs.line_status[tl_id]
-            mutable_properties[cfg.TRANSMISSION_LINES][tl_id][cfg.MAX_FLOW] = max_flows[
-                tl_id
-            ]
+            mutable_properties[cfg.TRANSMISSION_LINES][tl_id][cfg.CONNECTED_STATUS] = self.curr_obs.line_status[tl_id]
+            mutable_properties[cfg.TRANSMISSION_LINES][tl_id][cfg.MAX_FLOW] = max_flows[tl_id]
 
         return mutable_properties
 
@@ -150,9 +118,7 @@ class AIPlan4GridAgent:
         self.env = env
         self.scenario_id = scenario_id
         self.env.set_id(self.scenario_id)
-        self.initial_topology = (
-            deepcopy(self.env).reset().connectivity_matrix().astype(bool)
-        )
+        self.initial_topology = deepcopy(self.env).reset().connectivity_matrix().astype(bool)
         self.curr_obs = self.env.reset()
         self.tactical_horizon = tactical_horizon
         self.static_properties = self.get_static_properties()
@@ -200,10 +166,7 @@ class AIPlan4GridAgent:
         """
         do_nothing_action = self.env.action_space({})
 
-        simulated_observations = [
-            self.curr_obs.simulate(do_nothing_action, i)[0]
-            for i in range(self.tactical_horizon)
-        ]
+        simulated_observations = [self.curr_obs.simulate(do_nothing_action, i)[0] for i in range(self.tactical_horizon)]
 
         forecasted_states = [
             {
@@ -238,10 +201,7 @@ class AIPlan4GridAgent:
         vprint = verbose_print(verbose)
 
         congested_now = np.any(self.curr_obs.rho >= 1)
-        forecasted_congestions = [
-            self.forecasted_states[t][cfg.CONGESTED_STATUS]
-            for t in range(self.tactical_horizon)
-        ]
+        forecasted_congestions = [self.forecasted_states[t][cfg.CONGESTED_STATUS] for t in range(self.tactical_horizon)]
         congested_future = np.any(forecasted_congestions)
 
         def _print_congested_line(line, flow, max_flow, time_step):
@@ -255,9 +215,7 @@ class AIPlan4GridAgent:
             vprint("\tCongestion detected!")
             congested_lines = np.where(self.curr_obs.rho >= 1)[0]
             for line in congested_lines:
-                max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][
-                    cfg.MAX_FLOW
-                ]
+                max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]
                 flow = self.curr_obs.p_or[line]
                 _print_congested_line(line, flow, max_flow, "right now")
             return True
@@ -265,16 +223,10 @@ class AIPlan4GridAgent:
         if congested_future and self.tactical_horizon > 1:
             vprint("\tCongestion detected in the future!")
             first_congestion_at = np.where(forecasted_congestions)[0][0]
-            congested_lines = np.where(
-                self.forecasted_states[first_congestion_at][cfg.CONGESTED_STATUS]
-            )[0]
+            congested_lines = np.where(self.forecasted_states[first_congestion_at][cfg.CONGESTED_STATUS])[0]
             for line in congested_lines:
-                max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][
-                    cfg.MAX_FLOW
-                ]
-                forecasted_flow = self.forecasted_states[first_congestion_at][
-                    cfg.FLOWS
-                ][line]
+                max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]
+                forecasted_flow = self.forecasted_states[first_congestion_at][cfg.FLOWS][line]
                 _print_congested_line(
                     line,
                     forecasted_flow,
@@ -361,10 +313,10 @@ class AIPlan4GridAgent:
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[-1][cfg.REDISPATCH].append((id, value))
-                slack_value-=value
+                slack_value -= value
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[-1][cfg.SET_STORAGE].append((id, value))
-                slack_value+=value
+                slack_value += value
             else:
                 raise RuntimeError("The action type is not valid!")
         return g2op_actions
@@ -401,17 +353,10 @@ class AIPlan4GridAgent:
         up_plan = upp.solve()
         end = timer()
         vprint(f"\tProblem solved in {end - start} seconds")
-        g2op_actions = [
-            self.env.action_space(d) for d in self.up_actions_to_g2op_actions(up_plan)
-        ]
+        g2op_actions = [self.env.action_space(d) for d in self.up_actions_to_g2op_actions(up_plan)]
         if len(g2op_actions) != self.tactical_horizon:
             # extend the actions to the tactical horizon with do nothing actions
-            g2op_actions.extend(
-                [
-                    self.env.action_space({})
-                    for _ in range(self.tactical_horizon - len(g2op_actions))
-                ]
-            )
+            g2op_actions.extend([self.env.action_space({}) for _ in range(self.tactical_horizon - len(g2op_actions))])
         return g2op_actions
 
     def progress(self, step: int) -> tuple[BaseObservation, float, bool, dict]:
@@ -441,10 +386,7 @@ class AIPlan4GridAgent:
             if done:
                 break
             self.update_states()
-            if all_zeros and (
-                self.check_congestions(verbose=False)
-                or self.check_topology(verbose=False)
-            ):
+            if all_zeros and (self.check_congestions(verbose=False) or self.check_topology(verbose=False)):
                 print(
                     "\n\tDoing nothing induced a change in the grid topology or the congestion state, re-solving the UP problem...\n"
                 )

@@ -28,9 +28,7 @@ def fill_parser(parser: argparse.ArgumentParser):
         default=None,
         required=False,
     )
-    parser.usage = (
-        "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>]"
-    )
+    parser.usage = "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>]"
     parser.description = "Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used."
 
 

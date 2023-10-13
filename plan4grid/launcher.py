@@ -20,10 +20,7 @@ class Launcher:
 
     def _check_parameters(self):
         try:
-            if (
-                self.parameters[cfg.TACTICAL_HORIZON]
-                > self.parameters[cfg.STRATEGIC_HORIZON]
-            ):
+            if self.parameters[cfg.TACTICAL_HORIZON] > self.parameters[cfg.STRATEGIC_HORIZON]:
                 raise ValueError(
                     f"The tactical horizon ({self.parameters[cfg.TACTICAL_HORIZON]}) cannot be greater than the strategic horizon ({self.parameters[cfg.STRATEGIC_HORIZON]})."
                 )
@@ -40,9 +37,7 @@ class Launcher:
                     f"The solver ({self.parameters[cfg.SOLVER]}) must be one of the following: {cfg.SOLVERS}."
                 )
             if self.parameters[cfg.NOISE] not in [True, False]:
-                raise ValueError(
-                    f"The noise parameter ({self.parameters[cfg.NOISE]}) must be a boolean."
-                )
+                raise ValueError(f"The noise parameter ({self.parameters[cfg.NOISE]}) must be a boolean.")
             if self.parameters[cfg.STRATEGIC_HORIZON] > 288:
                 raise ValueError(
                     f"The strategic horizon ({self.parameters[cfg.STRATEGIC_HORIZON]}) must be lower or equal to 288, (24 hours in 5 minutes time steps)."
@@ -93,9 +88,7 @@ class Launcher:
             "load_p_handler": CSVHandler("load_p"),
             "gen_v_handler": DoNothingHandler("prod_v"),
             "load_q_handler": CSVHandler("load_q"),
-            "h_forecast": [
-                h * self.time_step for h in range(1, self.tactical_horizon + 1)
-            ],
+            "h_forecast": [h * self.time_step for h in range(1, self.tactical_horizon + 1)],
             "gen_p_for_handler": handler("prod_p_forecasted"),
             "load_p_for_handler": handler("load_p_forecasted"),
             "load_q_for_handler": handler("load_q_forecasted"),
@@ -119,9 +112,7 @@ class Launcher:
         agent.print_summary()
         agent.print_grid_properties()
         nb_steps = self.strategic_horizon // self.tactical_horizon
-        print(
-            f"Running the agent on scenario {self.scenario_id} for {nb_steps} steps..."
-        )
+        print(f"Running the agent on scenario {self.scenario_id} for {nb_steps} steps...")
         cumulative_reward = 0
         for i in range(1, nb_steps + 1):
             print(f"\n* Episode {i}/{nb_steps}:")
