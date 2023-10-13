@@ -336,9 +336,11 @@ class AIPlan4GridAgent:
         # fetch the slack bus id
         slack_id = np.where(self.static_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
         # then we parse the up actions
+        slack_value = 0
         for action in up_actions:
             action = action.action.name
             if action == cfg.ADVANCE_STEP_ACTION:
+                g2op_actions[-1][cfg.REDISPATCH].append((slack_id, slack_value))
                 new_dict = deepcopy(template_dict)
                 g2op_actions.append(new_dict)
                 continue
@@ -358,11 +360,12 @@ class AIPlan4GridAgent:
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[-1][cfg.REDISPATCH].append((id, value))
+                slack_value-=value
             elif action_type == cfg.STORAGE_ACTION_PREFIX:
                 g2op_actions[-1][cfg.SET_STORAGE].append((id, value))
+                slack_value+=value
             else:
                 raise RuntimeError("The action type is not valid!")
-            g2op_actions[-1][cfg.REDISPATCH].append((slack_id, -value))
         return g2op_actions
 
     def get_UP_actions(self, step: int, verbose: bool = True) -> list[ActionSpace]:

@@ -47,7 +47,7 @@ class UnifiedPlanningProblem:
 
         self.nb_digits = 6
         self.float_precision = 10**-self.nb_digits
-        self.ptdf_threshold = 0.05
+        self.ptdf_threshold = 0.01
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
         os.makedirs(self.log_dir, exist_ok=True)
@@ -204,9 +204,7 @@ class UnifiedPlanningProblem:
                         )  # this action represents the increase or decrease of the setpoint of the generator by i MW at time t
                         action = pgen_actions[-1]
                         nb_lines_effects = 0
-                        actions_costs[action] = i * float(
-                            self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id]
-                        )
+
                         action.add_precondition(
                             Equals(self.curr_step, t),
                         )
@@ -229,16 +227,20 @@ class UnifiedPlanningProblem:
                             )
                         )
                         if direction == "increase":
-                            new_setpoint = Plus(curr_state, i)
+                            new_setpoint =  curr_state + i if t==0 else Plus(curr_state, i)
                         else:
-                            new_setpoint = Minus(curr_state, i)
+                            new_setpoint = curr_state - i if t==0 else Minus(curr_state, i)
+
+                        actions_costs[action] =Times(_abs(Minus(new_setpoint, float(self.forecasted_states[t][cfg.GEN_PROD][id]))),float(
+                            self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id]
+                        ))
+
                         action.add_effect(self.pgen[id][t], new_setpoint)
                         for k in range(self.nb_transmission_lines):
-                            diff_flows = Times(self.ptdf[k][connected_bus],Minus(new_setpoint,float(self.forecasted_states[t][cfg.GEN_PROD][id])))
+                            diff_flows = self.ptdf[k][connected_bus]*(new_setpoint-float(self.forecasted_states[t][cfg.GEN_PROD][id])) if t==0 else Times(self.ptdf[k][connected_bus],Minus(new_setpoint,float(self.forecasted_states[t][cfg.GEN_PROD][id])))
                             if t == 0: ## flow impact can be calculated since new_setpoint is nown
-                                if (
-                                    _abs(diff_flows)
-                                    <= float(
+                                if (abs(diff_flows)<=
+                                       float(
                                         self.grid_params[cfg.TRANSMISSION_LINES][k][
                                             cfg.MAX_FLOW
                                         ]
