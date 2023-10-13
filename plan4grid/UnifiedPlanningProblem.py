@@ -47,7 +47,7 @@ class UnifiedPlanningProblem:
 
         self.nb_digits = 6
         self.float_precision = 10**-self.nb_digits
-        self.ptdf_threshold = 0.01
+        self.ptdf_threshold = 0.05
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
         os.makedirs(self.log_dir, exist_ok=True)
@@ -57,7 +57,7 @@ class UnifiedPlanningProblem:
         )
 
         self.create_fluents()
-        self.create_actions(nb_gen_actions=2, nb_sto_actions=2)
+        self.create_actions(nb_gen_actions=1, nb_sto_actions=1)
         self.create_problem()
 
     def create_fluents(self):
@@ -197,7 +197,8 @@ class UnifiedPlanningProblem:
                     else:
                         ramp = self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][id]
 
-                    for i in np.linspace(0, ramp, nb_actions):
+                    for i in np.linspace(0, ramp, nb_actions+1):
+                        if i == 0: continue
                         pgen_actions.append(
                             InstantaneousAction(f"gen_{id}_{direction}_{i}_{t}")
                         )  # this action represents the increase or decrease of the setpoint of the generator by i MW at time t
@@ -233,26 +234,22 @@ class UnifiedPlanningProblem:
                             new_setpoint = Minus(curr_state, i)
                         action.add_effect(self.pgen[id][t], new_setpoint)
                         for k in range(self.nb_transmission_lines):
-                            diff_flows = Times(
-                                self.ptdf[k][connected_bus],
-                                Minus(
-                                    new_setpoint,
-                                    float(self.forecasted_states[t][cfg.GEN_PROD][id]),
-                                ),
-                            )
-                            if (
-                                _abs(diff_flows)
-                                <= float(
-                                    self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                        cfg.MAX_FLOW
-                                    ]
-                                )
-                                * self.ptdf_threshold
-                            ):
-                                self.logger.debug(
-                                    f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
-                                )
-                                continue
+                            diff_flows = Times(self.ptdf[k][connected_bus],Minus(new_setpoint,float(self.forecasted_states[t][cfg.GEN_PROD][id])))
+                            if t == 0: ## flow impact can be calculated since new_setpoint is nown
+                                if (
+                                    _abs(diff_flows)
+                                    <= float(
+                                        self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                            cfg.MAX_FLOW
+                                        ]
+                                    )
+                                    * self.ptdf_threshold
+                                ):
+                                    self.logger.debug(
+                                        f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                    )
+                                    continue
+
                             action.add_increase_effect(
                                 self.flows[k][t],
                                 diff_flows,
@@ -356,7 +353,8 @@ class UnifiedPlanningProblem:
                     ][id]
 
                 # note that here the ramp is also in MW
-                for i in np.linspace(0, ramp, nb_actions):
+                for i in np.linspace(0, ramp, nb_actions+1):
+                    if i == 0: continue
                     psto_actions.append(
                         InstantaneousAction(f"sto_{id}_{direction}_{i}_{t}")
                     )  # this action represents the charge or discharge of the storage by i MW at time t
@@ -394,12 +392,13 @@ class UnifiedPlanningProblem:
                         )
                     action.add_effect(self.psto[id][t], new_soc)
                     for k in range(self.nb_transmission_lines):
-                        diff_flows = Times(
-                            self.ptdf[k][connected_bus],
-                            new_soc,
-                        )
+
+                        if direction == "increase":
+                            diff_flows = -self.ptdf[k][connected_bus]*i
+                        else:
+                            diff_flows = self.ptdf[k][connected_bus]*i
                         if (
-                            _abs(diff_flows)
+                            abs(diff_flows)
                             <= float(
                                 self.grid_params[cfg.TRANSMISSION_LINES][k][
                                     cfg.MAX_FLOW
@@ -457,10 +456,16 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                         )
-                    action.add_decrease_effect(
-                        self.pgen[self.slack_id][t],
-                        new_soc,
-                    )
+                    if direction == "increase":
+                        action.add_decrease_effect(
+                            self.pgen[self.slack_id][t],
+                            -i,
+                        )
+                    else:
+                        action.add_decrease_effect(
+                            self.pgen[self.slack_id][t],
+                            i,
+                        )
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
                         psto_actions.pop()
@@ -483,7 +488,7 @@ class UnifiedPlanningProblem:
                         f"\tMax flow updated for line: {k} from value {max_flow} to new value {forecasted_flow}"
                     )
 
-    def create_actions(self, nb_gen_actions: int = 2, nb_sto_actions: int = 2):
+    def create_actions(self, nb_gen_actions: int = 1, nb_sto_actions: int = 1):
         """Create actions for the problem.
 
         Args:
@@ -591,7 +596,7 @@ class UnifiedPlanningProblem:
             for t in range(self.tactical_horizon)
         ]  # is it too restrictive? Maybe to update
 
-        goal_2 = [Equals(self.curr_step, self.tactical_horizon - 1)]
+        goal_2 = [Equals(self.curr_step, self.tactical_horizon)]
 
         goals = goal_1 + goal_2
 
