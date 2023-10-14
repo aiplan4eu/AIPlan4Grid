@@ -176,9 +176,14 @@ class UnifiedPlanningProblem:
         assert direction in cfg.DIRECTIONS
         actions_costs = {}
         pgen_actions = []
+        pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
+        pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
 
         for t in range(self.tactical_horizon):
             for id in range(self.nb_gens):
+                pmin = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][id])
+                pmax = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][id])
+
                 if (
                     self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][id] == True
                     and self.grid_params[cfg.GENERATORS][cfg.SLACK][id] == False
@@ -226,12 +231,43 @@ class UnifiedPlanningProblem:
                                 ),
                             )
                         )
+                        action.add_precondition(
+                            Equals(self.curr_step, t),
+                        )
+                        action.add_precondition(
+                            Or([self.congestions[k][t] for k in range(self.nb_transmission_lines)]),
+                        )
+
                         if direction == "increase":
                             new_setpoint =  curr_state + i if t==0 else Plus(curr_state, i)
+                            new_setpoint_slack = Minus(self.pgen[self.slack_id][t], i)
                         else:
                             new_setpoint = curr_state - i if t==0 else Minus(curr_state, i)
+                            new_setpoint_slack = Plus(self.pgen[self.slack_id][t], i)
 
-                        actions_costs[action] =Times(_abs(Minus(new_setpoint, float(self.forecasted_states[t][cfg.GEN_PROD][id]))),float(
+                            ## Precondition to avoid being below pmin or above Pmax for slack and current generator
+                        action.add_precondition(
+                            And(
+                                GE(
+                                    new_setpoint,
+                                    pmin,
+                                ),
+                                LE(
+                                    new_setpoint,
+                                    pmax,
+                                ),
+                                GE(
+                                    new_setpoint_slack,
+                                    pmin_slack,
+                                ),
+                                LE(
+                                    new_setpoint_slack,
+                                    pmax_slack,
+                                ),
+                            )
+                        )
+
+                        actions_costs[action] =Times(i,float(
                             self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id]
                         ))
 
@@ -332,8 +368,13 @@ class UnifiedPlanningProblem:
         actions_costs = {}
         psto_actions = []
 
+        pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
+        pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
+
         for t in range(self.tactical_horizon):
             for id in range(self.nb_storages):
+                socmin = float(self.grid_params[cfg.STORAGES][cfg.EMIN][id])
+                socmax = float(self.grid_params[cfg.STORAGES][cfg.EMAX][id])
                 connected_bus = int(
                     self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][id]
                 ) * int(self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][id])
@@ -387,14 +428,36 @@ class UnifiedPlanningProblem:
                         )
                     )
                     if direction == "increase":
-                        new_soc = Plus(curr_state, i * self.time_step / 60 / efficiency)
+                        new_soc = Plus(curr_state, efficiency*i * self.time_step / 60)
+                        new_setpoint_slack = Plus(self.pgen[self.slack_id][t],i)
                     else:
-                        new_soc = Minus(
-                            curr_state, i * self.time_step / 60 * efficiency
+                        new_soc = Minus(curr_state, i * self.time_step / (60 * efficiency))
+                        new_setpoint_slack = Minus(self.pgen[self.slack_id][t],i)
+
+                        ## Precondition to avoid being below pmin or above Pmax for slack and current generator
+                    action.add_precondition(
+                        And(
+                            GE(
+                                new_soc,
+                                socmin
+                            ),
+                            LE(
+                                new_soc,
+                                socmax
+                            ),
+                            GE(
+                                new_setpoint_slack,
+                                pmin_slack
+                            ),
+                            LE(
+                                new_setpoint_slack,
+                                pmax_slack
+                            ),
                         )
+                    )
+
                     action.add_effect(self.psto[id][t], new_soc)
                     for k in range(self.nb_transmission_lines):
-
                         if direction == "increase":
                             diff_flows = -self.ptdf[k][connected_bus]*i
                         else:
