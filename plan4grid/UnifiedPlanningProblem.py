@@ -11,7 +11,7 @@ from unified_planning.engines.sequential_simulator import (
 from unified_planning.shortcuts import *
 
 import plan4grid.config as cfg
-from plan4grid.utils import compute_size_array, setup_logger, _abs
+from plan4grid.utils import compute_size_array, setup_logger
 
 
 class UnifiedPlanningProblem:
@@ -47,7 +47,7 @@ class UnifiedPlanningProblem:
 
         self.nb_digits = 6
         self.float_precision = 10**-self.nb_digits
-        self.ptdf_threshold = 0.01
+        self.ptdf_threshold = 0.05
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
         os.makedirs(self.log_dir, exist_ok=True)
@@ -169,9 +169,13 @@ class UnifiedPlanningProblem:
         assert direction in cfg.DIRECTIONS
         actions_costs = {}
         pgen_actions = []
+        pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
+        pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
 
         for t in range(self.tactical_horizon):
             for id in range(self.nb_gens):
+                pmin = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][id])
+                pmax = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][id])
                 if (
                     self.grid_params[cfg.GENERATORS][cfg.REDISPATCHABLE][id] == True
                     and self.grid_params[cfg.GENERATORS][cfg.SLACK][id] == False
@@ -193,6 +197,7 @@ class UnifiedPlanningProblem:
                     for i in np.linspace(0, ramp, nb_actions + 1):
                         if i == 0:
                             continue
+
                         pgen_actions.append(
                             InstantaneousAction(f"gen_{id}_{direction}_{i}_{t}")
                         )  # this action represents the increase or decrease of the setpoint of the generator by i MW at time t
@@ -214,28 +219,54 @@ class UnifiedPlanningProblem:
                                 ),
                             )
                         )
+                        action.add_precondition(
+                            Equals(self.curr_step, t),
+                        )
+                        action.add_precondition(
+                            Or([self.congestions[k][t] for k in range(self.nb_transmission_lines)]),
+                        )
+
                         if direction == "increase":
                             new_setpoint = curr_state + i if t == 0 else Plus(curr_state, i)
+                            new_setpoint_slack = Minus(self.pgen[self.slack_id][t], i)
                         else:
                             new_setpoint = curr_state - i if t == 0 else Minus(curr_state, i)
+                            new_setpoint_slack = Plus(self.pgen[self.slack_id][t], i)
+
+                        action.add_precondition(
+                            And(
+                                GE(
+                                    new_setpoint,
+                                    pmin,
+                                ),
+                                LE(
+                                    new_setpoint,
+                                    pmax,
+                                ),
+                                GE(
+                                    new_setpoint_slack,
+                                    pmin_slack,
+                                ),
+                                LE(
+                                    new_setpoint_slack,
+                                    pmax_slack,
+                                ),
+                            )
+                        )
 
                         actions_costs[action] = Times(
-                            _abs(
-                                Minus(
-                                    new_setpoint,
-                                    float(self.forecasted_states[t][cfg.GEN_PROD][id]),
-                                )
-                            ),
-                            float(self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id]),
+                            i, float(self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id])
                         )
 
                         action.add_effect(self.pgen[id][t], new_setpoint)
+
                         for k in range(self.nb_transmission_lines):
                             if self.check_maintenance(t, k):
                                 pgen_actions.pop()
                                 actions_costs.popitem()
                                 self.logger.debug(f"Action {action.name} is useless because line {k} is in maintenance")
                                 continue
+
                             diff_flows = (
                                 self.ptdf[k][connected_bus]
                                 * (new_setpoint - float(self.forecasted_states[t][cfg.GEN_PROD][id]))
@@ -248,6 +279,7 @@ class UnifiedPlanningProblem:
                                     ),
                                 )
                             )
+
                             if t == 0:
                                 if (
                                     abs(diff_flows)
@@ -259,47 +291,51 @@ class UnifiedPlanningProblem:
                                     )
                                     continue
 
-                            action.add_increase_effect(
-                                self.flows[k][t],
-                                diff_flows,
-                            )
-                            nb_lines_effects += 1
-                            action.add_effect(
-                                self.congestions[k][t],
-                                True,
-                                condition=Or(
-                                    GE(
-                                        self.flows[k][t] + diff_flows,
-                                        float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
+                            if self.ptdf[k][connected_bus] >= self.ptdf_threshold:
+                                nb_lines_effects += 1
+                                action.add_increase_effect(
+                                    self.flows[k][t],
+                                    diff_flows,
+                                )
+                                action.add_effect(
+                                    self.congestions[k][t],
+                                    True,
+                                    condition=Or(
+                                        GE(
+                                            self.flows[k][t] + diff_flows,
+                                            float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
+                                        ),
+                                        LE(
+                                            self.flows[k][t] + diff_flows,
+                                            float(-self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
+                                        ),
                                     ),
-                                    LE(
-                                        self.flows[k][t] + diff_flows,
-                                        float(-self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
+                                )
+                                action.add_effect(
+                                    self.congestions[k][t],
+                                    False,
+                                    condition=And(
+                                        LT(
+                                            self.flows[k][t] + diff_flows,
+                                            float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
+                                        ),
+                                        GT(
+                                            self.flows[k][t] + diff_flows,
+                                            float(-self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
+                                        ),
                                     ),
-                                ),
-                            )
-                            action.add_effect(
-                                self.congestions[k][t],
-                                False,
-                                condition=And(
-                                    LT(
-                                        self.flows[k][t] + diff_flows,
-                                        float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
-                                    ),
-                                    GT(
-                                        self.flows[k][t] + diff_flows,
-                                        float(-self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]),
-                                    ),
-                                ),
-                            )
+                                )
+
                         action.add_decrease_effect(
                             self.pgen[self.slack_id][t],
                             new_setpoint - float(self.forecasted_states[t][cfg.GEN_PROD][id]),
                         )
+
                         if nb_lines_effects == 0:
                             actions_costs.popitem()
                             pgen_actions.pop()
                             self.logger.debug(f"Action {action.name} is useless")
+
         return pgen_actions, actions_costs
 
     def create_sto_actions(
@@ -322,8 +358,13 @@ class UnifiedPlanningProblem:
         actions_costs = {}
         psto_actions = []
 
+        pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
+        pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
+
         for t in range(self.tactical_horizon):
             for id in range(self.nb_storages):
+                socmin = float(self.grid_params[cfg.STORAGES][cfg.EMIN][id])
+                socmax = float(self.grid_params[cfg.STORAGES][cfg.EMAX][id])
                 connected_bus = int(self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][id]) * int(
                     self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][id]
                 )
@@ -344,12 +385,14 @@ class UnifiedPlanningProblem:
                 for i in np.linspace(0, ramp, nb_actions + 1):
                     if i == 0:
                         continue
+
                     psto_actions.append(
                         InstantaneousAction(f"sto_{id}_{direction}_{i}_{t}")
                     )  # this action represents the charge or discharge of the storage by i MW at time t
                     action = psto_actions[-1]
                     nb_lines_effects = 0
                     actions_costs[action] = i * float(self.grid_params[cfg.STORAGES][cfg.STORAGE_COST_PER_MW][id])
+
                     action.add_precondition(
                         Equals(self.curr_step, t),
                     )
@@ -365,21 +408,36 @@ class UnifiedPlanningProblem:
                             ),
                         )
                     )
+
                     if direction == "increase":
-                        new_soc = Plus(curr_state, i * self.time_step / 60 / efficiency)
+                        new_soc = Plus(curr_state, efficiency * i * self.time_step / 60)
+                        new_setpoint_slack = Plus(self.pgen[self.slack_id][t], i)
                     else:
-                        new_soc = Minus(curr_state, i * self.time_step / 60 * efficiency)
+                        new_soc = Minus(curr_state, i * self.time_step / (60 * efficiency))
+                        new_setpoint_slack = Minus(self.pgen[self.slack_id][t], i)
+
+                    action.add_precondition(
+                        And(
+                            GE(new_soc, socmin),
+                            LE(new_soc, socmax),
+                            GE(new_setpoint_slack, pmin_slack),
+                            LE(new_setpoint_slack, pmax_slack),
+                        )
+                    )
                     action.add_effect(self.psto[id][t], new_soc)
+
                     for k in range(self.nb_transmission_lines):
                         if self.check_maintenance(t, k):
                             psto_actions.pop()
                             actions_costs.popitem()
                             self.logger.debug(f"Action {action.name} is useless because line {k} is in maintenance")
                             continue
+
                         if direction == "increase":
                             diff_flows = -self.ptdf[k][connected_bus] * i
                         else:
                             diff_flows = self.ptdf[k][connected_bus] * i
+
                         if (
                             abs(diff_flows)
                             <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]) * self.ptdf_threshold
@@ -388,6 +446,7 @@ class UnifiedPlanningProblem:
                                 f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
                             )
                             continue
+
                         action.add_increase_effect(self.flows[k][t], diff_flows)
                         nb_lines_effects += 1
                         action.add_effect(
@@ -418,6 +477,7 @@ class UnifiedPlanningProblem:
                                 ),
                             ),
                         )
+
                     if direction == "increase":
                         action.add_decrease_effect(
                             self.pgen[self.slack_id][t],
@@ -428,10 +488,12 @@ class UnifiedPlanningProblem:
                             self.pgen[self.slack_id][t],
                             i,
                         )
+
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
                         psto_actions.pop()
                         self.logger.debug(f"Action {action.name} is useless")
+
         return psto_actions, actions_costs
 
     def update_max_flows(self):
