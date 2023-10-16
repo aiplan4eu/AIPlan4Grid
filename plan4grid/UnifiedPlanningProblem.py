@@ -47,7 +47,7 @@ class UnifiedPlanningProblem:
 
         self.nb_digits = 6
         self.float_precision = 10**-self.nb_digits
-        self.ptdf_threshold = 0.01
+        self.ptdf_threshold = 0.05
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
         os.makedirs(self.log_dir, exist_ok=True)
@@ -288,55 +288,56 @@ class UnifiedPlanningProblem:
                                     )
                                     continue
 
-                            action.add_increase_effect(
-                                self.flows[k][t],
-                                diff_flows,
-                            )
-                            nb_lines_effects += 1
-                            action.add_effect(
-                                self.congestions[k][t],
-                                True,
-                                condition=Or(
-                                    GE(
-                                        self.flows[k][t] + diff_flows,
-                                        float(
-                                            self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                                cfg.MAX_FLOW
-                                            ]
+                            if self.ptdf[k][connected_bus]>=0.05:
+                                nb_lines_effects += 1
+                                action.add_increase_effect(
+                                    self.flows[k][t],
+                                    diff_flows,
+                                )
+                                action.add_effect(
+                                    self.congestions[k][t],
+                                    True,
+                                    condition=Or(
+                                        GE(
+                                            self.flows[k][t] + diff_flows,
+                                            float(
+                                                self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                                    cfg.MAX_FLOW
+                                                ]
+                                            ),
+                                        ),
+                                        LE(
+                                            self.flows[k][t] + diff_flows,
+                                            float(
+                                                -self.grid_params[cfg.TRANSMISSION_LINES][
+                                                    k
+                                                ][cfg.MAX_FLOW]
+                                            ),
                                         ),
                                     ),
-                                    LE(
-                                        self.flows[k][t] + diff_flows,
-                                        float(
-                                            -self.grid_params[cfg.TRANSMISSION_LINES][
-                                                k
-                                            ][cfg.MAX_FLOW]
+                                )
+                                action.add_effect(
+                                    self.congestions[k][t],
+                                    False,
+                                    condition=And(
+                                        LT(
+                                            self.flows[k][t] + diff_flows,
+                                            float(
+                                                self.grid_params[cfg.TRANSMISSION_LINES][k][
+                                                    cfg.MAX_FLOW
+                                                ]
+                                            ),
+                                        ),
+                                        GT(
+                                            self.flows[k][t] + diff_flows,
+                                            float(
+                                                -self.grid_params[cfg.TRANSMISSION_LINES][
+                                                    k
+                                                ][cfg.MAX_FLOW]
+                                            ),
                                         ),
                                     ),
-                                ),
-                            )
-                            action.add_effect(
-                                self.congestions[k][t],
-                                False,
-                                condition=And(
-                                    LT(
-                                        self.flows[k][t] + diff_flows,
-                                        float(
-                                            self.grid_params[cfg.TRANSMISSION_LINES][k][
-                                                cfg.MAX_FLOW
-                                            ]
-                                        ),
-                                    ),
-                                    GT(
-                                        self.flows[k][t] + diff_flows,
-                                        float(
-                                            -self.grid_params[cfg.TRANSMISSION_LINES][
-                                                k
-                                            ][cfg.MAX_FLOW]
-                                        ),
-                                    ),
-                                ),
-                            )
+                                )
                         action.add_decrease_effect(
                             self.pgen[self.slack_id][t],
                             new_setpoint
@@ -370,6 +371,7 @@ class UnifiedPlanningProblem:
 
         pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
         pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
+
 
         for t in range(self.tactical_horizon):
             for id in range(self.nb_storages):
