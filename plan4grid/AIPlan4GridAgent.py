@@ -403,7 +403,7 @@ class AIPlan4GridAgent:
             print("\tNo congestion detected, doing nothing...")
             actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
         i = 0
-        while i != self.tactical_horizon:
+        while i <= self.tactical_horizon - 1:
             if self.check_maintenance():
                 lines_to_reconnect_in_next_action = [line_id for line_id in self.lines_to_reconnect if line_id[1] == 1]
                 if len(lines_to_reconnect_in_next_action) > 0:
