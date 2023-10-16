@@ -47,6 +47,24 @@ class Launcher:
                 f"The parameter {e} is missing in the configuration file. Please make sure that the configuration file contains only the following self.parameters: {cfg.self.parameters_LIST}."
             )
 
+    def _get_data_feeding_kwargs(self) -> dict:
+        if self.noise:
+            handler = NoisyForecastHandler
+        else:
+            handler = PerfectForecastHandler
+
+        return {
+            "gridvalueClass": FromHandlers,
+            "gen_p_handler": CSVHandler("prod_p"),
+            "load_p_handler": CSVHandler("load_p"),
+            "gen_v_handler": DoNothingHandler("prod_v"),
+            "load_q_handler": CSVHandler("load_q"),
+            "h_forecast": [h * self.time_step for h in range(1, self.tactical_horizon + 1)],
+            "gen_p_for_handler": handler("prod_p_forecasted"),
+            "load_p_for_handler": handler("load_p_forecasted"),
+            "load_q_for_handler": handler("load_q_forecasted"),
+        }
+
     def __init__(
         self,
         env_name: str,
@@ -74,54 +92,38 @@ class Launcher:
             cfg.NOISE: self.noise,
         }
         self._check_parameters()
-        clean_logs()
 
-    def _get_data_feeding_kwargs(self) -> dict:
-        if self.noise:
-            handler = NoisyForecastHandler
-        else:
-            handler = PerfectForecastHandler
-
-        return {
-            "gridvalueClass": FromHandlers,
-            "gen_p_handler": CSVHandler("prod_p"),
-            "load_p_handler": CSVHandler("load_p"),
-            "gen_v_handler": DoNothingHandler("prod_v"),
-            "load_q_handler": CSVHandler("load_q"),
-            "h_forecast": [h * self.time_step for h in range(1, self.tactical_horizon + 1)],
-            "gen_p_for_handler": handler("prod_p_forecasted"),
-            "load_p_for_handler": handler("load_p_forecasted"),
-            "load_q_for_handler": handler("load_q_forecasted"),
-        }
-
-    def launch(self):
-        """Launch the agent."""
-        env = grid2op.make(
+        self.env = grid2op.make(
             dataset=self.env_name,
             data_feeding_kwargs=self._get_data_feeding_kwargs(),
             test=self.debug,
             backend=PandaPowerBackend(),
         )
-        agent = AIPlan4GridAgent(
-            env=env,
+
+        self.agent = AIPlan4GridAgent(
+            env=self.env,
             scenario_id=self.scenario_id,
             tactical_horizon=self.tactical_horizon,
             solver=self.solver,
             debug=self.debug,
         )
-        agent.print_summary()
-        agent.print_grid_properties()
+
+    def launch(self):
+        """Launch the agent."""
+        clean_logs()
+        self.agent.print_summary()
+        self.agent.print_grid_properties()
         nb_steps = self.strategic_horizon // self.tactical_horizon
         print(f"Running the agent on scenario {self.scenario_id} for {nb_steps} steps...")
         cumulative_reward = 0
         for i in range(1, nb_steps + 1):
             print(f"\n* Episode {i}/{nb_steps}:")
-            obs, reward, done, *_ = agent.progress(i)
+            obs, reward, done, *_ = self.agent.progress(i)
             print(f"\tReward: {reward}")
             cumulative_reward += reward
             if done and i != (nb_steps):
                 print("The episode is done before the end of the strategic horizon!")
                 break
         time.sleep(2)
-        agent.display_grid()
+        self.agent.display_grid()
         print(f"\n* Cumulative reward: {cumulative_reward}")

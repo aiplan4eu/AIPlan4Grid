@@ -119,6 +119,21 @@ class UnifiedPlanningProblem:
 
         self.curr_step_exp = FluentExp(self.curr_step)  # curr_step_exp allows to simulate the plan
 
+    def check_maintenance(self, t: int, k: int) -> bool:
+        """Check if a line k is in maintenance at time t.
+
+        Args:
+            t (int): time step
+            k (int): line id
+
+        Returns:
+            bool: True if the line is in maintenance, False otherwise
+        """
+        if t == 0:
+            return self.initial_states[cfg.CONNECTED_STATUS][k] == False
+        else:
+            return self.forecasted_states[t][cfg.CONNECTED_STATUS][k] == False
+
     def create_advance_step_action(
         self,
     ) -> tuple[InstantaneousAction, dict[str, float]]:
@@ -146,7 +161,7 @@ class UnifiedPlanningProblem:
 
         Args:
             direction (str): 'increase' or 'decrease'
-            nb_actions (int): number of actions to create between 0 and ramp
+            nb_actions (int): number of actions + 1 to create between 0 and ramp
 
         Returns:
             tuple[list[InstantaneousAction], dict[str, float]]: list of generators actions and their costs
@@ -216,6 +231,11 @@ class UnifiedPlanningProblem:
 
                         action.add_effect(self.pgen[id][t], new_setpoint)
                         for k in range(self.nb_transmission_lines):
+                            if self.check_maintenance(t, k):
+                                pgen_actions.pop()
+                                actions_costs.popitem()
+                                self.logger.debug(f"Action {action.name} is useless because line {k} is in maintenance")
+                                continue
                             diff_flows = (
                                 self.ptdf[k][connected_bus]
                                 * (new_setpoint - float(self.forecasted_states[t][cfg.GEN_PROD][id]))
@@ -228,7 +248,7 @@ class UnifiedPlanningProblem:
                                     ),
                                 )
                             )
-                            if t == 0:  ## flow impact can be calculated since new_setpoint is nown
+                            if t == 0:
                                 if (
                                     abs(diff_flows)
                                     <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW])
@@ -293,7 +313,7 @@ class UnifiedPlanningProblem:
 
         Args:
             direction (str): 'increase' or 'decrease'
-            nb_actions (int): number of actions to create between 0 and ramp
+            nb_actions (int): number of actions + 1 to create between 0 and ramp (not really a ramp here, just the max charge or discharge of the storage)
 
         Returns:
             tuple[list[InstantaneousAction], dict[str, float]]: list of storages actions and their costs
@@ -351,6 +371,11 @@ class UnifiedPlanningProblem:
                         new_soc = Minus(curr_state, i * self.time_step / 60 * efficiency)
                     action.add_effect(self.psto[id][t], new_soc)
                     for k in range(self.nb_transmission_lines):
+                        if self.check_maintenance(t, k):
+                            psto_actions.pop()
+                            actions_costs.popitem()
+                            self.logger.debug(f"Action {action.name} is useless because line {k} is in maintenance")
+                            continue
                         if direction == "increase":
                             diff_flows = -self.ptdf[k][connected_bus] * i
                         else:
@@ -410,6 +435,7 @@ class UnifiedPlanningProblem:
         return psto_actions, actions_costs
 
     def update_max_flows(self):
+        """Update max flows of the transmission lines according to the forecasted flows."""
         for k in range(self.nb_transmission_lines):
             max_flow = self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]
             for t in range(self.tactical_horizon):

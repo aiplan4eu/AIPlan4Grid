@@ -175,6 +175,7 @@ class AIPlan4GridAgent:
                 cfg.STO_CHARGE: simulated_observations[t].storage_charge,
                 cfg.FLOWS: simulated_observations[t].p_or,
                 cfg.CONGESTED_STATUS: simulated_observations[t].rho >= 1,
+                cfg.CONNECTED_STATUS: simulated_observations[t].line_status,
             }
             for t in range(self.tactical_horizon)
         ]
@@ -185,6 +186,7 @@ class AIPlan4GridAgent:
             cfg.STO_CHARGE: self.curr_obs.storage_charge,
             cfg.FLOWS: self.curr_obs.p_or,
             cfg.CONGESTED_STATUS: self.curr_obs.rho >= 1,
+            cfg.CONNECTED_STATUS: self.curr_obs.line_status,
         }
 
         return initial_states, forecasted_states
@@ -248,8 +250,8 @@ class AIPlan4GridAgent:
         """
         vprint = verbose_print(verbose)
         current_topology = self.curr_obs.connectivity_matrix().astype(bool)
-        topology_unchanged = np.array_equal(self.initial_topology, current_topology)
-        if not topology_unchanged:
+        topology_changed = not np.array_equal(self.initial_topology, current_topology)
+        if topology_changed:
             vprint("\tTopology has changed!")
             disconnected_lines = np.where(self.initial_topology & ~current_topology)[0]
             connected_lines = np.where(~self.initial_topology & current_topology)[0]
@@ -262,7 +264,7 @@ class AIPlan4GridAgent:
             self.mutable_properties = self.get_mutable_properties()
             self.initial_topology = current_topology
             vprint("\tDone!")
-        return not topology_unchanged
+        return topology_changed
 
     def update_states(self):
         """This function updates the initial states and the forecasted states of the grid."""
@@ -359,6 +361,31 @@ class AIPlan4GridAgent:
             g2op_actions.extend([self.env.action_space({}) for _ in range(self.tactical_horizon - len(g2op_actions))])
         return g2op_actions
 
+    def check_maintenance(self, verbose: bool = True) -> bool:
+        """This function checks if there is a maintenance on the grid on the current observation.
+        Set the `lines_to_reconnect` attribute to the list of lines to reconnect and the duration of the maintenance.
+
+        Args:
+            verbose (bool, optional): _description_. Defaults to True.
+
+        Returns:
+            bool: True if there is a maintenance, False otherwise
+        """
+        vprint = verbose_print(verbose)
+        lines_to_reconnect = []
+        if not self.curr_obs.line_status.all():
+            disconnected_lines = np.where(~self.curr_obs.line_status)[0]
+            duration_maintenance = self.curr_obs.duration_next_maintenance
+            for line in disconnected_lines:
+                if duration_maintenance[line] == 0:
+                    vprint(f"The powerline {line} is not disconnected from the grid for maintenance")
+                else:
+                    lines_to_reconnect.append((line, duration_maintenance[line]))
+        self.lines_to_reconnect = lines_to_reconnect
+        if len(lines_to_reconnect) > 0:
+            return True
+        return False
+
     def progress(self, step: int) -> tuple[BaseObservation, float, bool, dict]:
         """This function performs one step of the simulation.
 
@@ -377,6 +404,10 @@ class AIPlan4GridAgent:
             actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
         i = 0
         while i != self.tactical_horizon:
+            if self.check_maintenance():
+                lines_to_reconnect_in_next_action = [line_id for line_id in self.lines_to_reconnect if line_id[1] == 1]
+                if len(lines_to_reconnect_in_next_action) > 0:
+                    actions[i + 1].line_change_status = lines_to_reconnect_in_next_action
             all_zeros = not actions[i].to_vect().any()
             if not all_zeros:
                 print(f"\tPerforming action {actions[i]}")
@@ -387,9 +418,7 @@ class AIPlan4GridAgent:
                 break
             self.update_states()
             if all_zeros and (self.check_congestions(verbose=False) or self.check_topology(verbose=False)):
-                print(
-                    "\n\tDoing nothing induced a change in the grid topology or the congestion state, re-solving the UP problem...\n"
-                )
+                print("\n\tNew change detected due to congestion or topology --> re-solving the UP problem...\n")
                 actions = [None in range(i + 1)] + self.get_UP_actions(step)
             i += 1
         return results[-1]
