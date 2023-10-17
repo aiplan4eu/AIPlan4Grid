@@ -361,6 +361,34 @@ class UnifiedPlanningProblem:
         pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
         pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
 
+        ## detect first congestion and allow storage modification only in direction that is opposit to the congestion solving in time step before to help for preparation
+
+        firstTimeOfCongestion = -1
+        lineCongestedAtFirstCongestion = []
+        storageNoCHargeBeforeCongestion = []
+        storageNoDischargeBeforeCongestion = []
+        for t in range(self.tactical_horizon):
+            for k in range(self.nb_transmission_lines):
+                if bool(self.forecasted_states[t][cfg.CONGESTED_STATUS][k]):
+                    ## congestion detected in time step t on line k
+                    firstTimeOfCongestion = t
+                    lineCongestedAtFirstCongestion.append(k)
+                    for id in range(self.nb_storages):
+                        connected_bus = int(self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][id]) * int(
+                            self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][id]
+                        )
+                        if self.ptdf[k][connected_bus] >0:
+                            # do not allow storage id to charge before congestion, since solving congestion will need storage to charge
+                            # unless soc is above 50% of max
+                            storageNoCHargeBeforeCongestion.append(id)
+                            self.logger.debug(f"storage {id} adding to no charge before congestion because of first congestion in time step {t} on line {k}")
+                        else:
+                            # do not allow storage id to discharge before congestion, since solving congestion will need sotrage to discharge
+                            # unless soc is below 50% of max
+                            storageNoDischargeBeforeCongestion.append(id)
+                            self.logger.debug(f"storage {id} adding to no discharge before congestion because of first congestion in time step {t} on line {k}")
+            if lineCongestedAtFirstCongestion and t>=0: break
+
         for t in range(self.tactical_horizon):
             for id in range(self.nb_storages):
                 socmin = float(self.grid_params[cfg.STORAGES][cfg.EMIN][id])
@@ -408,6 +436,32 @@ class UnifiedPlanningProblem:
                             ),
                         )
                     )
+                    if id in storageNoDischargeBeforeCongestion and direction=="decrease":
+                        action.add_precondition(
+                            Or(
+                                GE(
+                                    curr_state,
+                                    socmax/2,
+                                ),
+                                GE(
+                                    self.curr_step,
+                                    int(firstTimeOfCongestion)
+                                ),
+                            )
+                        )
+                    if id in storageNoCHargeBeforeCongestion and direction=="increase":
+                        action.add_precondition(
+                            Or(
+                                LE(
+                                    curr_state,
+                                    socmax/2,
+                                    ),
+                                GE(
+                                    self.curr_step,
+                                    int(firstTimeOfCongestion)
+                                ),
+                            )
+                        )
 
                     if direction == "increase":
                         new_soc = Plus(curr_state, efficiency * i * self.time_step / 60)
