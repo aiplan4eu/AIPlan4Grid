@@ -262,9 +262,9 @@ class UnifiedPlanningProblem:
 
                         for k in range(self.nb_transmission_lines):
                             if self.check_maintenance(t, k):
-                                pgen_actions.pop()
-                                actions_costs.popitem()
                                 self.logger.debug(f"Action {action.name} is useless because line {k} is in maintenance")
+                                if self.ptdf.shape[0] != self.nb_transmission_lines:
+                                    self.ptdf = np.insert(self.ptdf, k, np.zeros(self.ptdf.shape[1]), axis=0)
                                 continue
 
                             diff_flows = (
@@ -428,9 +428,9 @@ class UnifiedPlanningProblem:
 
                     for k in range(self.nb_transmission_lines):
                         if self.check_maintenance(t, k):
-                            psto_actions.pop()
-                            actions_costs.popitem()
                             self.logger.debug(f"Action {action.name} is useless because line {k} is in maintenance")
+                            if self.ptdf.shape[0] != self.nb_transmission_lines:
+                                self.ptdf = np.insert(self.ptdf, k, np.zeros(self.ptdf.shape[1]), axis=0)
                             continue
 
                         if direction == "increase":
@@ -512,8 +512,8 @@ class UnifiedPlanningProblem:
         """Create actions for the problem.
 
         Args:
-            nb_gen_actions (int): number of actions to create between 0 and ramp for generators in each direction, so 2*nb_gen_actions actions are created
-            nb_sto_actions (int): number of actions to create between 0 and ramp for storages in each direction, so 2*nb_sto_actions actions are created
+            nb_gen_actions (int): number of actions to create between 0 and ramp for generators in each direction, so 2*(nb_gen_actions+1) actions are created
+            nb_sto_actions (int): number of actions to create between 0 and ramp for storages in each direction, so 2*(nb_sto_actions+1) actions are created
         """
         self.update_max_flows()
 
