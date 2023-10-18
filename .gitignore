@@ -163,3 +163,4 @@ log/
 tmp/
 .python-version
 .VSCodeCounter
+_tmp/
