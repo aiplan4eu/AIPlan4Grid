@@ -119,6 +119,21 @@ class UnifiedPlanningProblem:
 
         self.curr_step_exp = FluentExp(self.curr_step)  # curr_step_exp allows to simulate the plan
 
+        self.genMoved = np.array(
+            [
+                [Fluent(f"bgen_{gen_id}_{t}", BoolType()) for t in range(self.tactical_horizon)]
+                for gen_id in range(self.nb_gens)
+            ]
+        )          # #TODO LB test
+
+        self.storMoved = np.array(
+            [
+                [Fluent(f"bstor_{sto_id}_{t}", BoolType()) for t in range(self.tactical_horizon)]
+                for sto_id in range(self.nb_storages)
+                ]
+        )          # #TODO LB test
+
+# pgen is the setpoint of the generator in MW
     def is_disconnected(self, t: int, k: int) -> bool:
         """Check if a line k is disconnected at time t.
 
@@ -207,18 +222,7 @@ class UnifiedPlanningProblem:
                         action.add_precondition(
                             Equals(self.curr_step, t),
                         )
-                        action.add_precondition(
-                            And(
-                                GE(
-                                    self.pgen[id][t],
-                                    float(self.forecasted_states[t][cfg.GEN_PROD][id] - self.float_precision),
-                                ),
-                                LE(
-                                    self.pgen[id][t],
-                                    float(self.forecasted_states[t][cfg.GEN_PROD][id] + self.float_precision),
-                                ),
-                            )
-                        )
+
                         action.add_precondition(
                             Equals(self.curr_step, t),
                         )
@@ -258,8 +262,12 @@ class UnifiedPlanningProblem:
                             i, float(self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id])
                         )
 
-                        action.add_effect(self.pgen[id][t], new_setpoint)
+                        for t2 in range(t,self.tactical_horizon):
+                            action.add_effect(self.pgen[id][t2], new_setpoint)
 
+                            self.logger.debug(
+                                f"creating line effect  {id} at time {t} "
+                            )
                         for k in range(self.nb_transmission_lines):
                             if self.is_disconnected(t, k):
                                 if self.ptdf.shape[0] != self.nb_transmission_lines:
@@ -290,7 +298,7 @@ class UnifiedPlanningProblem:
                                     )
                                     continue
 
-                            if self.ptdf[k][connected_bus] >= self.ptdf_threshold:
+                            if abs(self.ptdf[k][connected_bus]) >= self.ptdf_threshold:
                                 nb_lines_effects += 1
                                 action.add_increase_effect(
                                     self.flows[k][t],
@@ -325,15 +333,19 @@ class UnifiedPlanningProblem:
                                     ),
                                 )
 
-                        action.add_decrease_effect(
-                            self.pgen[self.slack_id][t],
-                            new_setpoint - float(self.forecasted_states[t][cfg.GEN_PROD][id]),
-                        )
+                        for t2 in range(t,self.tactical_horizon):
+                            action.add_decrease_effect(
+                                self.pgen[self.slack_id][t2],
+                                new_setpoint - float(self.forecasted_states[t2][cfg.GEN_PROD][id]),
+                            )
 
                         if nb_lines_effects == 0:
                             actions_costs.popitem()
                             pgen_actions.pop()
                             self.logger.debug(f"Action {action.name} is useless")
+                        else:
+                            action.add_effect(self.genMoved[id][t], True)
+                            action.add_precondition(Not(self.genMoved[id][t]))
 
         return pgen_actions, actions_costs
 
@@ -423,18 +435,7 @@ class UnifiedPlanningProblem:
                     action.add_precondition(
                         Equals(self.curr_step, t),
                     )
-                    action.add_precondition(
-                        And(
-                            GE(
-                                self.psto[id][t],
-                                float(self.forecasted_states[t][cfg.STO_CHARGE][id] - self.float_precision),
-                            ),
-                            LE(
-                                self.psto[id][t],
-                                float(self.forecasted_states[t][cfg.STO_CHARGE][id] + self.float_precision),
-                            ),
-                        )
-                    )
+
                     if id in storageNoDischargeBeforeCongestion and direction=="decrease":
                         action.add_precondition(
                             Or(
@@ -478,6 +479,8 @@ class UnifiedPlanningProblem:
                         )
                     )
                     action.add_effect(self.psto[id][t], new_soc)
+                    for t2 in range(t+1,self.tactical_horizon):
+                        action.add_effect(self.psto[id][t2], new_soc)
 
                     for k in range(self.nb_transmission_lines):
                         if self.is_disconnected(t, k):
@@ -530,21 +533,25 @@ class UnifiedPlanningProblem:
                             ),
                         )
 
-                    if direction == "increase":
-                        action.add_decrease_effect(
-                            self.pgen[self.slack_id][t],
-                            -i,
-                        )
-                    else:
-                        action.add_decrease_effect(
-                            self.pgen[self.slack_id][t],
-                            i,
-                        )
+                    for t2 in range(t,self.tactical_horizon):
+                        if direction == "increase":
+                            action.add_decrease_effect(
+                                self.pgen[self.slack_id][t2],
+                                -i,
+                            )
+                        else:
+                            action.add_decrease_effect(
+                                self.pgen[self.slack_id][t2],
+                                i,
+                            )
 
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
                         psto_actions.pop()
                         self.logger.debug(f"Action {action.name} is useless")
+                    else:
+                        action.add_effect(self.storMoved[id][t], True)
+                        action.add_precondition(Not(self.storMoved[id][t]))
 
         return psto_actions, actions_costs
 
@@ -620,6 +627,14 @@ class UnifiedPlanningProblem:
 
         problem.add_fluent(self.curr_step)
 
+        for id in range(self.nb_gens):
+            for t in range(self.tactical_horizon):
+                problem.add_fluent(self.genMoved[id][t])
+
+        for id in range(self.nb_storages):
+            for t in range(self.tactical_horizon):
+                problem.add_fluent(self.storMoved[id][t])
+
         # add actions
         problem.add_actions(self.pgen_actions)
         problem.add_actions(self.psto_actions)
@@ -657,6 +672,14 @@ class UnifiedPlanningProblem:
                 )
 
         problem.set_initial_value(self.curr_step, 0)
+
+        for id in range(self.nb_storages):
+            for t in range(self.tactical_horizon):
+                problem.set_initial_value(self.storMoved[id][t],False)
+
+        for id in range(self.nb_gens):
+            for t in range(self.tactical_horizon):
+                problem.set_initial_value(self.genMoved[id][t],False)
 
         # add quality metrics for optimization + goal
         self.quality_metric = up.model.metrics.MinimizeActionCosts(self.actions_costs)
