@@ -43,9 +43,7 @@ class Launcher:
                     f"The strategic horizon ({self.parameters[cfg.STRATEGIC_HORIZON]}) must be lower or equal to 288, (24 hours in 5 minutes time steps)."
                 )
         except KeyError as e:
-            raise KeyError(
-                f"The parameter {e} is missing in the configuration file. Please make sure that the configuration file contains only the following self.parameters: {cfg.self.parameters_LIST}."
-            )
+            raise KeyError(f"The parameter {e} is missing.")
 
     def _get_data_feeding_kwargs(self) -> dict:
         if self.noise:
@@ -68,12 +66,12 @@ class Launcher:
     def __init__(
         self,
         env_name: str,
-        scenario_id: int,
-        tactical_horizon: int,
+        scenario_id: str,
+        tactical_horizon: int = 1,
         strategic_horizon: int = 288,
         time_step: int = 5,
         solver: str = "enhsp",
-        noise: bool = True,
+        noise: bool = False,
         debug: bool = False,
     ):
         self.env_name = env_name
@@ -93,12 +91,15 @@ class Launcher:
         }
         self._check_parameters()
 
-        self.env = grid2op.make(
-            dataset=self.env_name,
-            data_feeding_kwargs=self._get_data_feeding_kwargs(),
-            test=self.debug,
-            backend=PandaPowerBackend(),
-        )
+        try:
+            self.env = grid2op.make(
+                dataset=self.env_name,
+                data_feeding_kwargs=self._get_data_feeding_kwargs(),
+                test=self.debug,
+                backend=PandaPowerBackend(),
+            )
+        except ValueError as e:
+            raise ValueError(f"An error occurred while loading the environment: {e}")
 
         self.agent = AIPlan4GridAgent(
             env=self.env,
@@ -124,6 +125,6 @@ class Launcher:
             if done and i != (nb_steps):
                 print("The episode is done before the end of the strategic horizon!")
                 break
-        time.sleep(2)
-        self.agent.display_grid()
-        print(f"\n* Cumulative reward: {cumulative_reward}")
+        # time.sleep(2)
+        # self.agent.display_grid()
+        # print(f"\n* Cumulative reward: {cumulative_reward}")

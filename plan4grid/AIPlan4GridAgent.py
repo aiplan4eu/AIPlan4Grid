@@ -99,7 +99,7 @@ class AIPlan4GridAgent:
     def __init__(
         self,
         env: Environment,
-        scenario_id: int,
+        scenario_id: str,
         tactical_horizon: int,
         solver: str,
         debug: bool = False,
@@ -118,8 +118,9 @@ class AIPlan4GridAgent:
         self.env = env
         self.scenario_id = scenario_id
         self.env.set_id(self.scenario_id)
-        self.initial_topology = deepcopy(self.env).reset().connectivity_matrix().astype(bool)
+        self.env.seed(0)
         self.curr_obs = self.env.reset()
+        self.initial_topology = deepcopy(self.env).reset().connectivity_matrix().astype(bool)
         self.tactical_horizon = tactical_horizon
         self.static_properties = self.get_static_properties()
         self.mutable_properties = self.get_mutable_properties()
@@ -377,9 +378,10 @@ class AIPlan4GridAgent:
             disconnected_lines = np.where(~self.curr_obs.line_status)[0]
             duration_maintenance = self.curr_obs.duration_next_maintenance
             for line in disconnected_lines:
-                if duration_maintenance[line] == 0:
-                    vprint(f"The powerline {line} is not disconnected from the grid for maintenance")
-                else:
+                if duration_maintenance[line] > 0:
+                    vprint(
+                        f"\tLine {line} is disconnected for {duration_maintenance[line]} time steps due to maintenance"
+                    )
                     lines_to_reconnect.append((line, duration_maintenance[line]))
         self.lines_to_reconnect = lines_to_reconnect
         if len(lines_to_reconnect) > 0:
@@ -409,8 +411,7 @@ class AIPlan4GridAgent:
                 if len(lines_to_reconnect_in_next_action) > 0:
                     actions[i + 1].line_change_status = lines_to_reconnect_in_next_action
             all_zeros = not actions[i].to_vect().any()
-            if not all_zeros:
-                print(f"\tPerforming action {actions[i]}")
+            print(f"\tPerforming action {actions[i]}")
             obs, reward, done, info = self.env.step(actions[i])
             results.append((obs, reward, done, info))
             self.curr_obs = results[-1][0]

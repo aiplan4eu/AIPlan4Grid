@@ -1,4 +1,4 @@
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 import plan4grid.AIPlan4GridAgent
 import plan4grid.UnifiedPlanningProblem
 import plan4grid.launcher

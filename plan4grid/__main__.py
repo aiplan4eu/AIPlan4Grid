@@ -28,7 +28,14 @@ def fill_parser(parser: argparse.ArgumentParser):
         default=None,
         required=False,
     )
-    parser.usage = "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>]"
+    parser.add_argument(
+        "-d",
+        "--debug",
+        help="Debug mode.",
+        required=False,
+        action="store_true",
+    )
+    parser.usage = "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>] [-d]"
     parser.description = "Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used."
 
 
@@ -57,12 +64,12 @@ def main(args: argparse.Namespace):
             parameters = parse_ini(args.config_file)
         launcher = Launcher(
             env_name=args.env_name,
-            scenario_id=int(args.scenario_id),
+            scenario_id=args.scenario_id,
             tactical_horizon=parameters[cfg.TACTICAL_HORIZON],
             strategic_horizon=parameters[cfg.STRATEGIC_HORIZON],
             solver=parameters[cfg.SOLVER],
             noise=parameters[cfg.NOISE],
-            debug=True,
+            debug=args.debug,
         )
         launcher.launch()
     except Exception as e:

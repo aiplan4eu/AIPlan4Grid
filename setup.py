@@ -16,14 +16,14 @@ with open(path.join(HERE, "README.md"), encoding="utf-8") as f:
 # This call to setup() does all the work
 setup(
     name="plan4grid",
-    version="0.0.3",
+    version="0.0.4",
     description="Demo library",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/aiplan4eu/AIPlan4Grid",
     author="Martin Debouté",
     author_email="martin.deboute@artelys.com",
-    license="",
+    license="Apache 2.0",
     classifiers=[
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3.10",
@@ -31,7 +31,5 @@ setup(
     ],
     packages=["plan4grid"],
     include_package_data=True,
-    install_requires=open(pjoin(HERE, "requirements", "requirements.txt"))
-    .read()
-    .splitlines(),
+    install_requires=open(pjoin(HERE, "requirements", "requirements.txt")).read().splitlines(),
 )
