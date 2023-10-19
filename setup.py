@@ -3,7 +3,6 @@
 from codecs import open
 from os import path
 from os.path import join as pjoin
-
 from setuptools import setup
 
 # The directory containing this file
@@ -28,6 +27,7 @@ setup(
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
+        "License :: OSI Approved :: Apache Software License",
     ],
     packages=["plan4grid"],
     include_package_data=True,

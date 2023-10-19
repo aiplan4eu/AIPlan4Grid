@@ -13,7 +13,8 @@ from pandapower.pypower.makePTDF import makePTDF
 
 import plan4grid.config as cfg
 from plan4grid.UnifiedPlanningProblem import InstantaneousAction, UnifiedPlanningProblem
-from plan4grid.utils import verbose_print
+from plan4grid.utils import setup_logger
+from typing import Union
 
 
 class AIPlan4GridAgent:
@@ -99,10 +100,11 @@ class AIPlan4GridAgent:
     def __init__(
         self,
         env: Environment,
-        scenario_id: str,
+        scenario_id: Union[int, str],
         tactical_horizon: int,
         solver: str,
-        debug: bool = False,
+        test: bool,
+        debug: bool,
     ):
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
             raise RuntimeError(
@@ -116,9 +118,13 @@ class AIPlan4GridAgent:
             )
 
         self.env = env
+        self.test = test
+        if self.test and isinstance(scenario_id, str):
+            raise ValueError(
+                "The scenario ID cannot be a string in test mode because you don't have access to all the chronics."
+            )
         self.scenario_id = scenario_id
         self.env.set_id(self.scenario_id)
-        self.env.seed(0)
         self.curr_obs = self.env.reset()
         self.initial_topology = deepcopy(self.env).reset().connectivity_matrix().astype(bool)
         self.tactical_horizon = tactical_horizon
@@ -129,13 +135,17 @@ class AIPlan4GridAgent:
         self.solver = solver
         self.debug = debug
 
+        name = __name__.split(".")[1]
+        self.logger = setup_logger(name=name, redirect_warnings=False)
+
     def print_summary(self):
         """Print the parameters of the agent."""
         print("Parameters of the agent:")
         print(f"\tTactical horizon: {self.tactical_horizon}")
         print(f"\tTime step: {self.time_step} minutes")
         print(f"\tSolver: {self.solver}")
-        print(f"\tDebug mode: {self.debug}\n")
+        print(f"\tDebug mode: {self.debug}")
+        print()
 
     def print_grid_properties(self):
         """Print the properties of the grid."""
@@ -154,7 +164,6 @@ class AIPlan4GridAgent:
 
     def display_grid(self):
         """Display the current state of the grid."""
-
         plot_helper = PlotMatplot(self.env.observation_space)
         plot_helper.plot_obs(self.curr_obs)
         plt.show()
@@ -192,45 +201,37 @@ class AIPlan4GridAgent:
 
         return initial_states, forecasted_states
 
-    def check_congestions(self, verbose: bool = True) -> bool:
+    def check_congestions(self) -> bool:
         """This function checks if there is a congestion on the grid on the current observation and on the forecasted observations.
-
-        Args:
-            verbose (bool, optional): If True, print information about the congestion. Defaults to True.
 
         Returns:
             bool: True if there is a congestion, False otherwise
         """
-        vprint = verbose_print(verbose)
-
         congested_now = np.any(self.curr_obs.rho >= 1)
         forecasted_congestions = [self.forecasted_states[t][cfg.CONGESTED_STATUS] for t in range(self.tactical_horizon)]
         congested_future = np.any(forecasted_congestions)
 
-        def _print_congested_line(line, flow, max_flow, time_step):
-            vprint(
-                f"\t\tLine {line} is congested with a flow of {flow:.2f} MW,",
-                f"but have a maximum/minimum flow of +/- {max_flow:.2f} MW",
-                time_step,
-            )
+        def _log_congested_line(line, flow, max_flow, time_step):
+            message = f"\tLine {line} is congested with a flow of {flow:.2f} MW but have a maximum/minimum flow of +/- {max_flow:.2f} MW {time_step}"
+            self.logger.info(message)
 
         if congested_now:
-            vprint("\tCongestion detected!")
+            self.logger.info("Congestion detected!")
             congested_lines = np.where(self.curr_obs.rho >= 1)[0]
             for line in congested_lines:
                 max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]
                 flow = self.curr_obs.p_or[line]
-                _print_congested_line(line, flow, max_flow, "right now")
+                _log_congested_line(line, flow, max_flow, "right now")
             return True
 
         if congested_future and self.tactical_horizon > 1:
-            vprint("\tCongestion detected in the future!")
+            self.logger.info("Congestion detected in the future!")
             first_congestion_at = np.where(forecasted_congestions)[0][0]
             congested_lines = np.where(self.forecasted_states[first_congestion_at][cfg.CONGESTED_STATUS])[0]
             for line in congested_lines:
                 max_flow = self.mutable_properties[cfg.TRANSMISSION_LINES][line][cfg.MAX_FLOW]
                 forecasted_flow = self.forecasted_states[first_congestion_at][cfg.FLOWS][line]
-                _print_congested_line(
+                _log_congested_line(
                     line,
                     forecasted_flow,
                     max_flow,
@@ -240,31 +241,27 @@ class AIPlan4GridAgent:
 
         return False
 
-    def check_topology(self, verbose: bool = True) -> bool:
+    def check_topology(self) -> bool:
         """This function checks if the topology of the grid has changed on the current observation.
-
-        Args:
-            verbose (bool, optional): If True, print information about the congestion. Defaults to True.
 
         Returns:
             bool: True if the topology has changed, False otherwise
         """
-        vprint = verbose_print(verbose)
         current_topology = self.curr_obs.connectivity_matrix().astype(bool)
         topology_changed = not np.array_equal(self.initial_topology, current_topology)
         if topology_changed:
-            vprint("\tTopology has changed!")
+            self.logger.info("Topology has changed!")
             disconnected_lines = np.where(self.initial_topology & ~current_topology)[0]
             connected_lines = np.where(~self.initial_topology & current_topology)[0]
             for line in disconnected_lines:
-                vprint(f"\t\tLine {line} has been disconnected.")
+                self.logger.info(f"\tLine {line} has been disconnected.")
             for line in connected_lines:
-                vprint(f"\t\tLine {line} has been connected.")
-            vprint("\tUpdating PTDF matrix and mutable properties...")
+                self.logger.info(f"\tLine {line} has been connected.")
+            self.logger.info("Updating PTDF matrix and grid properties...")
             self.ptdf = self.get_ptdf()
             self.mutable_properties = self.get_mutable_properties()
             self.initial_topology = current_topology
-            vprint("\tDone!")
+            self.logger.info("Done!")
         return topology_changed
 
     def update_states(self):
@@ -305,14 +302,12 @@ class AIPlan4GridAgent:
             action_type = action_info[0]
             id = int(action_info[1])
             direction = action_info[2]
-            if direction == "increase":
+            if direction == cfg.INCREASE_ACTION:
                 value = float(action_info[3])
-            elif direction == "decrease":
+            elif direction == cfg.DECREASE_ACTION:
                 value = -float(action_info[3])
             else:
-                raise RuntimeError(
-                    f"The direction of the action is not valid, it should be either increase or decrease!"
-                )
+                raise RuntimeError(f"The direction of the action is not valid, it should be in {cfg.DIRECTIONS}!")
             # we get the current value of the generator or the storage
             if action_type == cfg.GENERATOR_ACTION_PREFIX:
                 g2op_actions[-1][cfg.REDISPATCH].append((id, value))
@@ -324,75 +319,65 @@ class AIPlan4GridAgent:
                 raise RuntimeError("The action type is not valid!")
         return g2op_actions
 
-    def get_UP_actions(self, step: int, verbose: bool = True) -> list[ActionSpace]:
+    def get_UP_actions(self, step: int) -> list[ActionSpace]:
         """This function returns the `UnifiedPlanning` actions to perform on the grid.
 
         Args:
             step (int): current step of the simulation
-            verbose (bool, optional): If True, print information about the congestion. Defaults to True.
 
         Returns:
             list[ActionSpace]: grid2op actions to perform on the grid (one `ActionSpace` per time step)
         """
-        vprint = verbose_print(verbose)
-        vprint("\tCreating UP problem...")
+        self.logger.info(f"Creating UP problem number {step}...")
         grid_params = {**self.static_properties, **self.mutable_properties}
         upp = UnifiedPlanningProblem(
-            self.tactical_horizon,
-            self.time_step,
-            self.ptdf,
-            grid_params,
-            self.initial_states,
-            self.forecasted_states,
-            self.solver,
+            tactical_horizon=self.tactical_horizon,
+            time_step=self.time_step,
+            ptdf=self.ptdf,
+            grid_params=grid_params,
+            initial_states=self.initial_states,
+            forecasted_states=self.forecasted_states,
+            solver=self.solver,
             problem_id=step,
             debug=self.debug,
         )
         if self.debug:
-            vprint(f"\tSaving UP problem in {cfg.LOG_DIR}")
+            self.logger.info(f"Saving UP problem in {cfg.LOG_DIR}")
             upp.save_problem()
-        vprint("\tSolving UP problem...")
+        self.logger.info("Solving UP problem...")
         start = timer()
         up_plan = upp.solve()
         end = timer()
-        vprint(f"\tProblem solved in {end - start} seconds")
+        self.logger.info(f"Problem solved in {end - start} seconds")
         g2op_actions = [self.env.action_space(d) for d in self.up_actions_to_g2op_actions(up_plan)]
         if len(g2op_actions) != self.tactical_horizon:
             # extend the actions to the tactical horizon with do nothing actions
             g2op_actions.extend([self.env.action_space({}) for _ in range(self.tactical_horizon - len(g2op_actions))])
         return g2op_actions
 
-    def check_maintenance(self, verbose: bool = True) -> bool:
+    def check_maintenance(self) -> bool:
         """This function checks if there is a maintenance on the grid on the current observation.
         Set the `lines_to_reconnect` attribute to the list of lines to reconnect and the duration of the maintenance.
-
-        Args:
-            verbose (bool, optional): _description_. Defaults to True.
 
         Returns:
             bool: True if there is a maintenance, False otherwise
         """
-        vprint = verbose_print(verbose)
         lines_to_reconnect = []
         if not self.curr_obs.line_status.all():
             disconnected_lines = np.where(~self.curr_obs.line_status)[0]
             duration_maintenance = self.curr_obs.duration_next_maintenance
             for line in disconnected_lines:
                 if duration_maintenance[line] > 0:
-                    vprint(
-                        f"\tLine {line} is disconnected for {duration_maintenance[line]} time steps due to maintenance"
-                    )
+                    self.logger.info("Maintenance detected!")
+                    self.logger.info(f"\tLine {line} is disconnected for {duration_maintenance[line]} time steps")
                     lines_to_reconnect.append((line, duration_maintenance[line]))
         self.lines_to_reconnect = lines_to_reconnect
         if len(lines_to_reconnect) > 0:
             return True
         return False
 
-    def progress(self, step: int) -> tuple[BaseObservation, float, bool, dict]:
+    def progress(self) -> tuple[BaseObservation, float, bool, dict]:
         """This function performs one step of the simulation.
-
-        Args:
-            step (int): current step of the simulation
 
         Returns:
             tuple[BaseObservation, float, bool, dict]: respectively the observation, the reward, the done flag and the info dict
@@ -400,9 +385,9 @@ class AIPlan4GridAgent:
         results = []
         self.update_states()
         if self.check_congestions() or self.check_topology():
-            actions = self.get_UP_actions(step)
+            actions = self.get_UP_actions(self.env.nb_time_step)
         else:
-            print("\tNo congestion detected, doing nothing...")
+            self.logger.info("No congestion detected, doing nothing...")
             actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
         i = 0
         while i <= self.tactical_horizon - 1:
@@ -411,15 +396,16 @@ class AIPlan4GridAgent:
                 if len(lines_to_reconnect_in_next_action) > 0:
                     actions[i + 1].line_change_status = lines_to_reconnect_in_next_action
             all_zeros = not actions[i].to_vect().any()
-            print(f"\tPerforming action {actions[i]}")
+            if self.debug:
+                self.logger.debug(f"Performing action {actions[i]}")
             obs, reward, done, info = self.env.step(actions[i])
             results.append((obs, reward, done, info))
             self.curr_obs = results[-1][0]
             if done:
                 break
             self.update_states()
-            if all_zeros and (self.check_congestions(verbose=False) or self.check_topology(verbose=False)):
-                print("\n\tNew change detected due to congestion or topology --> re-solving the UP problem...\n")
-                actions = [None in range(i + 1)] + self.get_UP_actions(step)
+            if all_zeros and (self.check_congestions() or self.check_topology()):
+                self.logger.info("\nNew congestion or topology change detected --> re-solving the UP problem...\n")
+                actions = [None in range(i + 1)] + self.get_UP_actions(self.env.nb_time_step)
             i += 1
         return results[-1]

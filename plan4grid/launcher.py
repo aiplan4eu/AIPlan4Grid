@@ -1,14 +1,11 @@
 import time
+from typing import Union
 
 import grid2op
 from grid2op.Backend import PandaPowerBackend
 from grid2op.Chronics import FromHandlers
-from grid2op.Chronics.handlers import (
-    CSVHandler,
-    DoNothingHandler,
-    NoisyForecastHandler,
-    PerfectForecastHandler,
-)
+from grid2op.Chronics.handlers import CSVHandler, DoNothingHandler, NoisyForecastHandler, PerfectForecastHandler
+from tqdm import tqdm
 
 import plan4grid.config as cfg
 from plan4grid.AIPlan4GridAgent import AIPlan4GridAgent
@@ -66,15 +63,21 @@ class Launcher:
     def __init__(
         self,
         env_name: str,
-        scenario_id: str,
+        scenario_id: Union[int, str],
         tactical_horizon: int = 1,
         strategic_horizon: int = 288,
         time_step: int = 5,
         solver: str = "enhsp",
         noise: bool = False,
+        test: bool = False,
         debug: bool = False,
     ):
         self.env_name = env_name
+        self.test = test
+        if self.test and isinstance(scenario_id, str):
+            raise ValueError(
+                "The scenario ID cannot be a string in test mode because you don't have access to all the chronics."
+            )
         self.scenario_id = scenario_id
         self.tactical_horizon = tactical_horizon
         self.strategic_horizon = strategic_horizon
@@ -91,11 +94,13 @@ class Launcher:
         }
         self._check_parameters()
 
+        clean_logs()
+
         try:
             self.env = grid2op.make(
                 dataset=self.env_name,
                 data_feeding_kwargs=self._get_data_feeding_kwargs(),
-                test=self.debug,
+                test=self.test,
                 backend=PandaPowerBackend(),
             )
         except ValueError as e:
@@ -106,25 +111,25 @@ class Launcher:
             scenario_id=self.scenario_id,
             tactical_horizon=self.tactical_horizon,
             solver=self.solver,
+            test=self.test,
             debug=self.debug,
         )
 
     def launch(self):
         """Launch the agent."""
-        clean_logs()
-        self.agent.print_summary()
-        self.agent.print_grid_properties()
+        if self.debug:
+            self.agent.print_summary()
+            self.agent.print_grid_properties()
         nb_steps = self.strategic_horizon // self.tactical_horizon
-        print(f"Running the agent on scenario {self.scenario_id} for {nb_steps} steps...")
+        print(
+            f"\nRunning the agent on scenario {self.scenario_id} for {nb_steps} steps of {self.tactical_horizon*self.time_step} minutes.\n"
+        )
         cumulative_reward = 0
-        for i in range(1, nb_steps + 1):
-            print(f"\n* Episode {i}/{nb_steps}:")
-            obs, reward, done, *_ = self.agent.progress(i)
-            print(f"\tReward: {reward}")
+        for i in tqdm(range(1, nb_steps + 1), desc="Steps", total=self.strategic_horizon):
+            obs, reward, done, *_ = self.agent.progress()
             cumulative_reward += reward
             if done and i != (nb_steps):
-                print("The episode is done before the end of the strategic horizon!")
                 break
-        # time.sleep(2)
-        # self.agent.display_grid()
-        # print(f"\n* Cumulative reward: {cumulative_reward}")
+        print(f"\nTotal reward: {cumulative_reward}")
+        time.sleep(2)
+        self.agent.display_grid()

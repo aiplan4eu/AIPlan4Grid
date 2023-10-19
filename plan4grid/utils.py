@@ -1,48 +1,57 @@
 import logging
+import os
 import shutil
 import sys
 from os.path import join as pjoin
-from unified_planning.shortcuts import GE, Minus, FNode
 
 import numpy as np
 
 import plan4grid.config as cfg
 
 
-def verbose_print(verbose: bool) -> callable:
-    """Return a function that prints only if verbose is True."""
-    if verbose:
-
-        def _vprint(*args, **kwargs):
-            print(*args, **kwargs)
-
-    else:
-        _vprint = lambda *_, **__: None  # do-nothing function
-    return _vprint
-
-
 def compute_size_array(array: np.ndarray) -> int:
-    """Compute the size of an numpy array."""
+    """Compute the size of an array.
+
+    Args:
+        array (np.ndarray): Array to compute the size of.
+
+    Returns:
+        int: Size of the array.
+    """
     size = 1
     for i in array.shape:
         size *= i
     return size
 
 
-def setup_logger(name, log_dir, level=0):
-    """To setup as many loggers as you want."""
+def setup_logger(
+    name: str,
+    log_dir: str = cfg.LOG_DIR,
+    level: int = 0,
+    redirect_warnings=True,
+) -> logging.Logger:
+    """Setup a logger.
+
+    Args:
+        name (str): name of the logger.
+        log_dir (str, optional): name of the log directory. Defaults to cfg.LOG_DIR.
+        level (int, optional): level of the logger. Defaults to 0.
+        redirect_warnings (bool, optional): redirect warnings to a file. Defaults to True.
+
+    Returns:
+        logging.Logger: the logger.
+    """
+    os.makedirs(log_dir, exist_ok=True)
+    if redirect_warnings:
+        sys.stderr.write = open(pjoin(log_dir, cfg.WARN_FILE), "w", encoding="utf-8").write
     logging.basicConfig(
-        filename=pjoin(log_dir, cfg.OUT_FILE),
-        format="| %(levelname)-6s| %(asctime)s | %(message)s",
+        filename=pjoin(log_dir, f"{name}{cfg.LOG_SUFFIX}"),
+        format="| %(levelname)-7s | %(asctime)s | %(message)s",
         datefmt="%I:%M",
         level=level,
         force=True,
     )
-
-    sys.stderr.write = open(pjoin(log_dir, cfg.WARN_FILE), "w").write
-
     logger = logging.getLogger(name)
-
     return logger
 
 
@@ -67,18 +76,3 @@ def clean_logs():
         shutil.rmtree(cfg.LOG_DIR)
     except FileNotFoundError:
         pass
-
-
-def _abs(expression: FNode) -> FNode:
-    """Absolute value of an UP expression.
-
-    Args:
-        expression (FNode): expression to take the absolute value of
-
-    Returns:
-        FNode: absolute value of the expression
-    """
-    if GE(expression, 0):
-        return expression
-    else:
-        return Minus(expression)

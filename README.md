@@ -2,7 +2,7 @@
 
 ## Requirements
 
-Python 3.10.0 or higher is required.
+Python 3.10.0 is required.
 
 ```bash
 pip install -r requirements/requirements.txt

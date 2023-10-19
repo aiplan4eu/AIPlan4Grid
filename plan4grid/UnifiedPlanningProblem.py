@@ -1,4 +1,3 @@
-import os
 from os.path import join as pjoin
 
 import numpy as np
@@ -27,7 +26,7 @@ class UnifiedPlanningProblem:
         forecasted_states: dict,
         solver: str,
         problem_id: int,
-        debug: bool = False,
+        debug: bool,
     ):
         get_environment().credits_stream = None
 
@@ -50,11 +49,8 @@ class UnifiedPlanningProblem:
         self.ptdf_threshold = 0.05
 
         self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
-        os.makedirs(self.log_dir, exist_ok=True)
-        self.logger = setup_logger(
-            f"{__name__}_{self.id}",
-            self.log_dir,
-        )
+        name = __name__.split(".")[1]
+        self.logger = setup_logger(name=f"{name}_{self.id}", log_dir=self.log_dir)
 
         self.create_fluents()
         self.create_actions(nb_gen_actions=1, nb_sto_actions=1)
@@ -189,7 +185,7 @@ class UnifiedPlanningProblem:
                     else:
                         curr_state = self.pgen[id][t - 1]
 
-                    if direction == "increase":
+                    if direction == cfg.INCREASE_ACTION:
                         ramp = self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_UP][id]
                     else:
                         ramp = self.grid_params[cfg.GENERATORS][cfg.MAX_RAMP_DOWN][id]
@@ -226,7 +222,7 @@ class UnifiedPlanningProblem:
                             Or([self.congestions[k][t] for k in range(self.nb_transmission_lines)]),
                         )
 
-                        if direction == "increase":
+                        if direction == cfg.INCREASE_ACTION:
                             new_setpoint = curr_state + i if t == 0 else Plus(curr_state, i)
                             new_setpoint_slack = Minus(self.pgen[self.slack_id][t], i)
                         else:
@@ -285,9 +281,10 @@ class UnifiedPlanningProblem:
                                     <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW])
                                     * self.ptdf_threshold
                                 ):
-                                    self.logger.debug(
-                                        f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
-                                    )
+                                    if self.debug:
+                                        self.logger.debug(
+                                            f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                        )
                                     continue
 
                             if self.ptdf[k][connected_bus] >= self.ptdf_threshold:
@@ -333,7 +330,8 @@ class UnifiedPlanningProblem:
                         if nb_lines_effects == 0:
                             actions_costs.popitem()
                             pgen_actions.pop()
-                            self.logger.debug(f"Action {action.name} is useless")
+                            if self.debug:
+                                self.logger.debug(f"Action {action.name} is useless and is removed")
 
         return pgen_actions, actions_costs
 
@@ -373,7 +371,7 @@ class UnifiedPlanningProblem:
                 else:
                     curr_state = self.psto[id][t - 1]
 
-                if direction == "increase":
+                if direction == cfg.INCREASE_ACTION:
                     ramp = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_ABSORB][id]
                     efficiency = self.grid_params[cfg.STORAGES][cfg.CHARGING_EFFICIENCY][id]
                 else:
@@ -408,7 +406,7 @@ class UnifiedPlanningProblem:
                         )
                     )
 
-                    if direction == "increase":
+                    if direction == cfg.INCREASE_ACTION:
                         new_soc = Plus(curr_state, efficiency * i * self.time_step / 60)
                         new_setpoint_slack = Plus(self.pgen[self.slack_id][t], i)
                     else:
@@ -431,7 +429,7 @@ class UnifiedPlanningProblem:
                                 self.ptdf = np.insert(self.ptdf, k, np.zeros(self.ptdf.shape[1]), axis=0)
                             continue
 
-                        if direction == "increase":
+                        if direction == cfg.INCREASE_ACTION:
                             diff_flows = -self.ptdf[k][connected_bus] * i
                         else:
                             diff_flows = self.ptdf[k][connected_bus] * i
@@ -440,9 +438,10 @@ class UnifiedPlanningProblem:
                             abs(diff_flows)
                             <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]) * self.ptdf_threshold
                         ):
-                            self.logger.debug(
-                                f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
-                            )
+                            if self.debug:
+                                self.logger.debug(
+                                    f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                )
                             continue
 
                         action.add_increase_effect(self.flows[k][t], diff_flows)
@@ -476,7 +475,7 @@ class UnifiedPlanningProblem:
                             ),
                         )
 
-                    if direction == "increase":
+                    if direction == cfg.INCREASE_ACTION:
                         action.add_decrease_effect(
                             self.pgen[self.slack_id][t],
                             -i,
@@ -490,7 +489,8 @@ class UnifiedPlanningProblem:
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
                         psto_actions.pop()
-                        self.logger.debug(f"Action {action.name} is useless")
+                        if self.debug:
+                            self.logger.debug(f"Action {action.name} is useless and is removed")
 
         return psto_actions, actions_costs
 
@@ -503,7 +503,7 @@ class UnifiedPlanningProblem:
                 if not bool(self.forecasted_states[t][cfg.CONGESTED_STATUS][k]) and forecasted_flow > max_flow:
                     self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW] = max(forecasted_flow, max_flow)
                     self.logger.warning(
-                        f"\tMax flow updated for line: {k} from value {max_flow} to new value {forecasted_flow}"
+                        f"Max flow updated for line: {k} from value {max_flow} to new value {forecasted_flow}"
                     )
 
     def create_actions(self, nb_gen_actions: int = 1, nb_sto_actions: int = 1):
@@ -516,20 +516,20 @@ class UnifiedPlanningProblem:
         self.update_max_flows()
 
         gen_increase_actions, gen_increase_actions_costs = self.create_gen_actions(
-            "increase",
+            cfg.INCREASE_ACTION,
             nb_gen_actions,
         )
         gen_decrease_actions, gen_decrease_actions_costs = self.create_gen_actions(
-            "decrease",
+            cfg.DECREASE_ACTION,
             nb_gen_actions,
         )
 
         sto_increase_actions, sto_increase_actions_costs = self.create_sto_actions(
-            "increase",
+            cfg.INCREASE_ACTION,
             nb_sto_actions,
         )
         sto_decrease_actions, sto_decrease_actions_costs = self.create_sto_actions(
-            "decrease",
+            cfg.DECREASE_ACTION,
             nb_sto_actions,
         )
 
@@ -623,7 +623,7 @@ class UnifiedPlanningProblem:
         self.problem = problem
 
     def save_problem(self):
-        """Save the problem in .upp and .pddl formats in a temporary directory."""
+        """Save the problem in .upp and .pddl formats in a log directory."""
         try:
             upp_file = "problem_" + str(self.id) + cfg.UPP_SUFFIX
             pddl_file = "problem_" + str(self.id) + cfg.PDDL_SUFFIX
@@ -659,13 +659,13 @@ class UnifiedPlanningProblem:
             output = planner.solve(self.problem)
             plan = output.plan
             if plan is None:
-                print("\tNo plan found!")
-                self.logger.warning(output)
-                self.logger.warning("Plan returned: []")
+                self.logger.warning("No plan found!")
+                if self.debug:
+                    self.logger.debug(output)
                 return []
             else:
                 self.logger.info(f"Status: {output.status}")
-                self.logger.info(f"{plan}\n")
+                self.logger.info(f"{plan}")
                 if self.debug and len(plan.actions) > 0:
                     self.logger.debug("Simulating plan...")
                     with SequentialSimulator(problem=self.problem) as simulator:

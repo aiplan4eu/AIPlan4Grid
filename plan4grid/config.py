@@ -1,14 +1,16 @@
-from pathlib import Path
 from os.path import join as pjoin
+from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Parameters of the agent
 DEFAULT_INI_FILE = "parameters.ini"
 PARAMETERS = "Parameters"
 TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
 SOLVER = "solver"
 NOISE = "noise"
+TEST = "test"
 
 PARAMETERS_LIST = [TACTICAL_HORIZON, STRATEGIC_HORIZON, SOLVER, NOISE]
 SOLVERS = ["enhsp"]
@@ -62,10 +64,11 @@ LOG_DIR = pjoin(BASE_DIR, "log")
 UPP_SUFFIX = ".upp"
 PDDL_SUFFIX = ".pddl"
 LOG_SUFFIX = ".log"
-OUT_FILE = "out.log"
-WARN_FILE = "warning.log"
+WARN_FILE = "warn.log"
 
 GENERATOR_ACTION_PREFIX = "gen"
 STORAGE_ACTION_PREFIX = "sto"
 ADVANCE_STEP_ACTION = "advance_step"
-DIRECTIONS = ["increase", "decrease"]
+INCREASE_ACTION = "increase"
+DECREASE_ACTION = "decrease"
+DIRECTIONS = [INCREASE_ACTION, DECREASE_ACTION]

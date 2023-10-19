@@ -3,7 +3,7 @@ import configparser
 from os.path import join as pjoin
 
 import plan4grid.config as cfg
-from plan4grid.launcher import Launcher
+from plan4grid.Launcher import Launcher
 from plan4grid.utils import strtobool
 
 
@@ -50,6 +50,7 @@ def parse_ini(ini_file_path: str) -> dict:
         cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
         cfg.SOLVER: parameters_section[cfg.SOLVER],
         cfg.NOISE: strtobool(parameters_section[cfg.NOISE]),
+        cfg.TEST: strtobool(parameters_section[cfg.TEST]),
     }
     return parameters
 
@@ -62,6 +63,10 @@ def main(args: argparse.Namespace):
             parameters = parse_ini(ini_file_path)
         else:
             parameters = parse_ini(args.config_file)
+
+        if str(args.scenario_id).isdigit():
+            args.scenario_id = int(args.scenario_id)
+
         launcher = Launcher(
             env_name=args.env_name,
             scenario_id=args.scenario_id,
@@ -69,6 +74,7 @@ def main(args: argparse.Namespace):
             strategic_horizon=parameters[cfg.STRATEGIC_HORIZON],
             solver=parameters[cfg.SOLVER],
             noise=parameters[cfg.NOISE],
+            test=parameters[cfg.TEST],
             debug=args.debug,
         )
         launcher.launch()
