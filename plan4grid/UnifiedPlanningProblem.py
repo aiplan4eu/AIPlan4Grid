@@ -254,17 +254,24 @@ class UnifiedPlanningProblem:
                         )
 
                         actions_costs[action] = Times(
-                            i, float(self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id])
+                            i,
+                            float(self.grid_params[cfg.GENERATORS][cfg.GEN_COST_PER_MW][id]),
                         )
 
                         for t2 in range(t, self.tactical_horizon):
                             action.add_effect(self.pgen[id][t2], new_setpoint)
-                            self.logger.debug(f"Creating line effect on {id} at time {t}")
+                            if self.debug:
+                                self.logger.debug(f"Creating line effect on {id} at time {t}")
 
                         for k in range(self.nb_transmission_lines):
                             if self.is_disconnected(t, k):
                                 if self.ptdf.shape[0] != self.nb_transmission_lines:
-                                    self.ptdf = np.insert(self.ptdf, k, np.zeros(self.ptdf.shape[1]), axis=0)
+                                    self.ptdf = np.insert(
+                                        self.ptdf,
+                                        k,
+                                        np.zeros(self.ptdf.shape[1]),
+                                        axis=0,
+                                    )
                                 continue
 
                             diff_flows = (
