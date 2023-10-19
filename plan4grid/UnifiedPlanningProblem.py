@@ -259,8 +259,8 @@ class UnifiedPlanningProblem:
 
                         for t2 in range(t, self.tactical_horizon):
                             action.add_effect(self.pgen[id][t2], new_setpoint)
+                            self.logger.debug(f"Creating line effect on {id} at time {t}")
 
-                            self.logger.debug(f"creating line effect  {id} at time {t} ")
                         for k in range(self.nb_transmission_lines):
                             if self.is_disconnected(t, k):
                                 if self.ptdf.shape[0] != self.nb_transmission_lines:
@@ -367,43 +367,44 @@ class UnifiedPlanningProblem:
         pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
         pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
 
-        ## detect first congestion and allow storage modification only in direction that is opposit to the congestion solving in time step before to help for preparation
-
-        firstTimeOfCongestion = -1
-        lineCongestedAtFirstCongestion = []
-        storageNoCHargeBeforeCongestion = []
-        storageNoDischargeBeforeCongestion = []
+        # Detect first congestion and allow storage modification only in direction that is opposit to the congestion solving in time step before in order to help for preparation
+        first_time_congestion = -1
+        line_congested_at_first_congestion = []
+        storage_no_charge_before_congestion = []
+        storage_no_discharge_before_congestion = []
         for t in range(self.tactical_horizon):
             for k in range(self.nb_transmission_lines):
                 if bool(self.forecasted_states[t][cfg.CONGESTED_STATUS][k]):
-                    ## congestion detected in time step t on line k
-                    firstTimeOfCongestion = t
-                    lineCongestedAtFirstCongestion.append(k)
+                    # Congestion detected in time step t on line k
+                    first_time_congestion = t
+                    line_congested_at_first_congestion.append(k)
                     for id in range(self.nb_storages):
                         connected_bus = int(self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][id]) * int(
                             self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][id]
                         )
                         if self.ptdf[k][connected_bus] > 0:
-                            # do not allow storage id to charge before congestion, since solving congestion will need storage to charge
-                            # unless soc is above 50% of max
-                            storageNoCHargeBeforeCongestion.append(id)
-                            self.logger.debug(
-                                f"storage {id} adding to no charge before congestion because of first congestion in time step {t} on line {k}"
-                            )
+                            # Do not allow storage id to charge before congestion, since solving congestion will need storage to charge
+                            # Unless soc is above 50% of max
+                            storage_no_charge_before_congestion.append(id)
+                            if self.debug:
+                                self.logger.debug(
+                                    f"Storage {id} adding to no charge before congestion because of first congestion in time step {t} on line {k}"
+                                )
                         else:
-                            # do not allow storage id to discharge before congestion, since solving congestion will need sotrage to discharge
-                            # unless soc is below 50% of max
-                            storageNoDischargeBeforeCongestion.append(id)
-                            self.logger.debug(
-                                f"storage {id} adding to no discharge before congestion because of first congestion in time step {t} on line {k}"
-                            )
-            if lineCongestedAtFirstCongestion and t >= 0:
+                            # Do not allow storage id to discharge before congestion, since solving congestion will need storage to discharge
+                            # Unless soc is below 50% of max
+                            storage_no_discharge_before_congestion.append(id)
+                            if self.debug:
+                                self.logger.debug(
+                                    f"Storage {id} adding to no discharge before congestion because of first congestion in time step {t} on line {k}"
+                                )
+            if line_congested_at_first_congestion and t >= 0:
                 break
 
         for t in range(self.tactical_horizon):
             for id in range(self.nb_storages):
-                socmin = float(self.grid_params[cfg.STORAGES][cfg.EMIN][id])
-                socmax = float(self.grid_params[cfg.STORAGES][cfg.EMAX][id])
+                soc_min = float(self.grid_params[cfg.STORAGES][cfg.EMIN][id])
+                soc_max = float(self.grid_params[cfg.STORAGES][cfg.EMAX][id])
                 connected_bus = int(self.grid_params[cfg.STORAGES][cfg.STORAGE_BUS][id]) * int(
                     self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][id]
                 )
@@ -420,7 +421,7 @@ class UnifiedPlanningProblem:
                     ramp = self.grid_params[cfg.STORAGES][cfg.STORAGE_MAX_P_PROD][id]
                     efficiency = self.grid_params[cfg.STORAGES][cfg.DISCHARGING_EFFICIENCY][id]
 
-                # note that here the ramp is also in MW
+                # Note that here the ramp is also in MW
                 for i in np.linspace(0, ramp, nb_actions + 1):
                     if i == 0:
                         continue
@@ -436,24 +437,24 @@ class UnifiedPlanningProblem:
                         Equals(self.curr_step, t),
                     )
 
-                    if id in storageNoDischargeBeforeCongestion and direction == "decrease":
+                    if id in storage_no_discharge_before_congestion and direction == cfg.DECREASE_ACTION:
                         action.add_precondition(
                             Or(
                                 GE(
                                     curr_state,
-                                    socmax / 2,
+                                    soc_max / 2,
                                 ),
-                                GE(self.curr_step, int(firstTimeOfCongestion)),
+                                GE(self.curr_step, int(first_time_congestion)),
                             )
                         )
-                    if id in storageNoCHargeBeforeCongestion and direction == "increase":
+                    if id in storage_no_charge_before_congestion and direction == cfg.INCREASE_ACTION:
                         action.add_precondition(
                             Or(
                                 LE(
                                     curr_state,
-                                    socmax / 2,
+                                    soc_max / 2,
                                 ),
-                                GE(self.curr_step, int(firstTimeOfCongestion)),
+                                GE(self.curr_step, int(first_time_congestion)),
                             )
                         )
 
@@ -466,8 +467,8 @@ class UnifiedPlanningProblem:
 
                     action.add_precondition(
                         And(
-                            GE(new_soc, socmin),
-                            LE(new_soc, socmax),
+                            GE(new_soc, soc_min),
+                            LE(new_soc, soc_max),
                             GE(new_setpoint_slack, pmin_slack),
                             LE(new_setpoint_slack, pmax_slack),
                         )
@@ -528,16 +529,17 @@ class UnifiedPlanningProblem:
                             ),
                         )
 
-                    if direction == cfg.INCREASE_ACTION:
-                        action.add_decrease_effect(
-                            self.pgen[self.slack_id][t],
-                            -i,
-                        )
-                    else:
-                        action.add_decrease_effect(
-                            self.pgen[self.slack_id][t],
-                            i,
-                        )
+                    for t2 in range(t, self.tactical_horizon):
+                        if direction == cfg.INCREASE_ACTION:
+                            action.add_decrease_effect(
+                                self.pgen[self.slack_id][t2],
+                                -i,
+                            )
+                        else:
+                            action.add_decrease_effect(
+                                self.pgen[self.slack_id][t2],
+                                i,
+                            )
 
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
