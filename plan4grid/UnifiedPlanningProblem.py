@@ -1,3 +1,5 @@
+import warnings
+from logging import DEBUG, INFO
 from os.path import join as pjoin
 
 import numpy as np
@@ -48,9 +50,13 @@ class UnifiedPlanningProblem:
         self.float_precision = 10**-self.nb_digits
         self.ptdf_threshold = 0.05
 
-        self.log_dir = pjoin(cfg.LOG_DIR, f"problem_{self.id}")
-        name = __name__.split(".")[1]
-        self.logger = setup_logger(name=f"{name}_{self.id}", log_dir=self.log_dir)
+        if self.debug:
+            level = DEBUG
+        else:
+            level = INFO
+        name = f"problem_{self.id}"
+        self.log_dir = pjoin(cfg.LOG_DIR, name)
+        self.logger = setup_logger(name=name, log_dir=self.log_dir, level=level)
 
         self.create_fluents()
         self.create_actions(nb_gen_actions=1, nb_sto_actions=1)
@@ -260,8 +266,7 @@ class UnifiedPlanningProblem:
 
                         for t2 in range(t, self.tactical_horizon):
                             action.add_effect(self.pgen[id][t2], new_setpoint)
-                            if self.debug:
-                                self.logger.debug(f"Creating line effect on {id} at time {t}")
+                            self.logger.debug(f"Creating line effect on gen {id} at time {t2}")
 
                         for k in range(self.nb_transmission_lines):
                             if self.is_disconnected(t, k):
@@ -293,10 +298,9 @@ class UnifiedPlanningProblem:
                                     <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW])
                                     * self.ptdf_threshold
                                 ):
-                                    if self.debug:
-                                        self.logger.debug(
-                                            f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
-                                        )
+                                    self.logger.debug(
+                                        f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                    )
                                     continue
 
                             if abs(self.ptdf[k][connected_bus]) >= self.ptdf_threshold:
@@ -339,12 +343,12 @@ class UnifiedPlanningProblem:
                                 self.pgen[self.slack_id][t2],
                                 new_setpoint - float(self.forecasted_states[t2][cfg.GEN_PROD][id]),
                             )
+                            self.logger.debug(f"Creating line effect on slack gen {id} at time {t2}")
 
                         if nb_lines_effects == 0:
                             actions_costs.popitem()
                             pgen_actions.pop()
-                            if self.debug:
-                                self.logger.debug(f"Action {action.name} is useless and is removed")
+                            self.logger.debug(f"Action {action.name} is useless and is removed")
                         else:
                             action.add_effect(self.gen_moved[id][t], True)
                             action.add_precondition(Not(self.gen_moved[id][t]))
@@ -393,18 +397,16 @@ class UnifiedPlanningProblem:
                             # Do not allow storage id to charge before congestion, since solving congestion will need storage to charge
                             # Unless soc is above 50% of max
                             storage_no_charge_before_congestion.append(id)
-                            if self.debug:
-                                self.logger.debug(
-                                    f"Storage {id} adding to no charge before congestion because of first congestion in time step {t} on line {k}"
-                                )
+                            self.logger.debug(
+                                f"Storage {id} adding to no charge before congestion because of first congestion in time step {t} on line {k}"
+                            )
                         else:
                             # Do not allow storage id to discharge before congestion, since solving congestion will need storage to discharge
                             # Unless soc is below 50% of max
                             storage_no_discharge_before_congestion.append(id)
-                            if self.debug:
-                                self.logger.debug(
-                                    f"Storage {id} adding to no discharge before congestion because of first congestion in time step {t} on line {k}"
-                                )
+                            self.logger.debug(
+                                f"Storage {id} adding to no discharge before congestion because of first congestion in time step {t} on line {k}"
+                            )
             if line_congested_at_first_congestion and t >= 0:
                 break
 
@@ -483,6 +485,7 @@ class UnifiedPlanningProblem:
                     action.add_effect(self.psto[id][t], new_soc)
                     for t2 in range(t + 1, self.tactical_horizon):
                         action.add_effect(self.psto[id][t2], new_soc)
+                        self.logger.debug(f"Creating line effect on sto {id} at time {t2}")
 
                     for k in range(self.nb_transmission_lines):
                         if self.is_disconnected(t, k):
@@ -499,10 +502,9 @@ class UnifiedPlanningProblem:
                             abs(diff_flows)
                             <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]) * self.ptdf_threshold
                         ):
-                            if self.debug:
-                                self.logger.debug(
-                                    f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
-                                )
+                            self.logger.debug(
+                                f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                            )
                             continue
 
                         action.add_increase_effect(self.flows[k][t], diff_flows)
@@ -547,12 +549,12 @@ class UnifiedPlanningProblem:
                                 self.pgen[self.slack_id][t2],
                                 i,
                             )
+                        self.logger.debug(f"Creating line effect on slack gen {id} at time {t2}")
 
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
                         psto_actions.pop()
-                        if self.debug:
-                            self.logger.debug(f"Action {action.name} is useless and is removed")
+                        self.logger.debug(f"Action {action.name} is useless and is removed")
                     else:
                         action.add_effect(self.sto_moved[id][t], True)
                         action.add_precondition(Not(self.sto_moved[id][t]))
@@ -705,26 +707,28 @@ class UnifiedPlanningProblem:
 
     def save_problem(self):
         """Save the problem in .upp and .pddl formats in a log directory."""
-        try:
-            upp_file = "problem_" + str(self.id) + cfg.UPP_SUFFIX
-            pddl_file = "problem_" + str(self.id) + cfg.PDDL_SUFFIX
-            pddl_domain_file = "problem_domain_" + str(self.id) + cfg.PDDL_SUFFIX
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                upp_file = "problem_" + str(self.id) + cfg.UPP_SUFFIX
+                pddl_file = "problem_" + str(self.id) + cfg.PDDL_SUFFIX
+                pddl_domain_file = "problem_domain_" + str(self.id) + cfg.PDDL_SUFFIX
 
-            # upp problem, "upp" stands for unified planning problem
-            with open(pjoin(self.log_dir, upp_file), "w") as f:
-                f.write(
-                    f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.psto)+ compute_size_array(self.congestions) + compute_size_array(self.flows) + compute_size_array(self.sto_moved) + compute_size_array(self.gen_moved) + 1}\n"
-                )
-                f.write(f"number of actions: {len(self.pgen_actions) + len(self.psto_actions) + 1}\n")
-                f.write(self.problem.__str__())
-            f.close()
+                # upp problem, "upp" stands for unified planning problem
+                with open(pjoin(self.log_dir, upp_file), "w") as f:
+                    f.write(
+                        f"number of fluents: {compute_size_array(self.pgen) + compute_size_array(self.psto)+ compute_size_array(self.congestions) + compute_size_array(self.flows) + compute_size_array(self.sto_moved) + compute_size_array(self.gen_moved) + 1}\n"
+                    )
+                    f.write(f"number of actions: {len(self.pgen_actions) + len(self.psto_actions) + 1}\n")
+                    f.write(self.problem.__str__())
+                f.close()
 
-            # pddl problem
-            pddl_writer = up.io.PDDLWriter(self.problem, True, True)
-            pddl_writer.write_problem(pjoin(self.log_dir, pddl_file))
-            pddl_writer.write_domain(pjoin(self.log_dir, pddl_domain_file))
-        except Exception as e:
-            raise Exception(f"Error while saving problem: {e}")
+                # pddl problem
+                pddl_writer = up.io.PDDLWriter(self.problem, True, True)
+                pddl_writer.write_problem(pjoin(self.log_dir, pddl_file))
+                pddl_writer.write_domain(pjoin(self.log_dir, pddl_domain_file))
+            except Exception as e:
+                raise Exception(f"Error while saving problem: {e}")
 
     def solve(self) -> list[InstantaneousAction]:
         """Solve the problem.
@@ -732,57 +736,60 @@ class UnifiedPlanningProblem:
         Returns:
             list[InstantaneousAction]: list of actions of the plan
         """
-        with OneshotPlanner(
-            name=self.solver,
-            problem_kind=self.problem.kind,
-            optimality_guarantee=PlanGenerationResultStatus.SOLVED_OPTIMALLY,
-        ) as planner:
-            output = planner.solve(self.problem)
-            plan = output.plan
-            if plan is None:
-                self.logger.warning("No plan found!")
-                if self.debug:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with OneshotPlanner(
+                name=self.solver,
+                problem_kind=self.problem.kind,
+                optimality_guarantee=PlanGenerationResultStatus.SOLVED_OPTIMALLY,
+            ) as planner:
+                output = planner.solve(self.problem)
+                plan = output.plan
+                if plan is None:
+                    self.logger.warning("No plan found!")
                     self.logger.debug(output)
-                return []
-            else:
-                self.logger.info(f"Status: {output.status}")
-                self.logger.info(f"{plan}")
-                if self.debug and len(plan.actions) > 0:
-                    self.logger.debug("Simulating plan...")
-                    with SequentialSimulator(problem=self.problem) as simulator:
-                        initial_state = simulator.get_initial_state()
-                        minimize_cost_value = evaluate_quality_metric_in_initial_state(simulator, self.quality_metric)
-                        states = [initial_state]
-                        for act in plan.actions:
-                            self.logger.debug(f"\taction: {act}")
-                            new_state = simulator.apply(states[-1], act)
-                            states.append(new_state)
-                            self.logger.debug(
-                                f"\tgens new value: {[[float(new_state.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.tactical_horizon)]}"
+                    return []
+                else:
+                    self.logger.info(f"Status: {output.status}")
+                    self.logger.info(f"{plan}")
+                    if self.debug and len(plan.actions) > 0:
+                        self.logger.debug("Simulating plan...\n")
+                        with SequentialSimulator(problem=self.problem) as simulator:
+                            initial_state = simulator.get_initial_state()
+                            minimize_cost_value = evaluate_quality_metric_in_initial_state(
+                                simulator, self.quality_metric
                             )
-                            self.logger.debug(
-                                f"\tstorages new value: {[[float(new_state.get_value(self.psto_exp[s][t]).constant_value()) for s in range(self.nb_storages)] for t in range(self.tactical_horizon)]}"
-                            )
-                            self.logger.debug(
-                                f"\tflows new value: {[[float(new_state.get_value(self.flows_exp[k][t]).constant_value()) for k in range(self.nb_transmission_lines)] for t in range(self.tactical_horizon)]}"
-                            )
-                            self.logger.debug(
-                                f"\tcongestions new value: {[[new_state.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.tactical_horizon)]}"
-                            )
-                            self.logger.debug(
-                                f"\tgen slack new value: {[float(new_state.get_value(self.pgen_exp[self.slack_id][t]).constant_value()) for t in range(self.tactical_horizon)]}"
-                            )
-                            self.logger.debug(
-                                f"\tcurrent step new value: {float(new_state.get_value(self.curr_step_exp).constant_value())}"
-                            )
-                            minimize_cost_value = evaluate_quality_metric(
-                                simulator,
-                                self.quality_metric,
-                                minimize_cost_value,
-                                initial_state,
-                                act.action,
-                                act.actual_parameters,
-                                new_state,
-                            )
-                            self.logger.debug(f"\tcost: {float(minimize_cost_value)}\n")
-                return plan.actions
+                            states = [initial_state]
+                            for act in plan.actions:
+                                self.logger.debug(f"\taction: {act}")
+                                new_state = simulator.apply(states[-1], act)
+                                states.append(new_state)
+                                self.logger.debug(
+                                    f"\tgens new value: {[[float(new_state.get_value(self.pgen_exp[g][t]).constant_value()) for g in range(self.nb_gens)] for t in range(self.tactical_horizon)]}"
+                                )
+                                self.logger.debug(
+                                    f"\tstorages new value: {[[float(new_state.get_value(self.psto_exp[s][t]).constant_value()) for s in range(self.nb_storages)] for t in range(self.tactical_horizon)]}"
+                                )
+                                self.logger.debug(
+                                    f"\tflows new value: {[[float(new_state.get_value(self.flows_exp[k][t]).constant_value()) for k in range(self.nb_transmission_lines)] for t in range(self.tactical_horizon)]}"
+                                )
+                                self.logger.debug(
+                                    f"\tcongestions new value: {[[new_state.get_value(self.congestions_exp[k][t]) for k in range(self.nb_transmission_lines)] for t in range(self.tactical_horizon)]}"
+                                )
+                                self.logger.debug(
+                                    f"\tgen slack new value: {[float(new_state.get_value(self.pgen_exp[self.slack_id][t]).constant_value()) for t in range(self.tactical_horizon)]}"
+                                )
+                                self.logger.debug(
+                                    f"\tcurrent step new value: {float(new_state.get_value(self.curr_step_exp).constant_value())}"
+                                )
+                                minimize_cost_value = evaluate_quality_metric(
+                                    simulator,
+                                    self.quality_metric,
+                                    minimize_cost_value,
+                                    initial_state,
+                                    act.action,
+                                    act.actual_parameters,
+                                    new_state,
+                                )
+                                self.logger.debug(f"\tcost: {float(minimize_cost_value)}\n")
+                    return plan.actions

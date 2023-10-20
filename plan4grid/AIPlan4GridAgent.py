@@ -15,6 +15,7 @@ import plan4grid.config as cfg
 from plan4grid.UnifiedPlanningProblem import InstantaneousAction, UnifiedPlanningProblem
 from plan4grid.utils import setup_logger
 from typing import Union
+from logging import DEBUG, INFO
 
 
 class AIPlan4GridAgent:
@@ -135,12 +136,15 @@ class AIPlan4GridAgent:
         self.solver = solver
         self.debug = debug
 
-        name = __name__.split(".")[1]
-        self.logger = setup_logger(name=name, redirect_warnings=False)
+        if self.debug:
+            level = DEBUG
+        else:
+            level = INFO
+        self.logger = setup_logger(name="agent", level=level)
 
     def print_summary(self):
         """Print the parameters of the agent."""
-        print("Parameters of the agent:")
+        print("Parameters of the agent:\n")
         print(f"\tTactical horizon: {self.tactical_horizon}")
         print(f"\tTime step: {self.time_step} minutes")
         print(f"\tSolver: {self.solver}")
@@ -150,14 +154,14 @@ class AIPlan4GridAgent:
     def print_grid_properties(self):
         """Print the properties of the grid."""
         grid_properties = {**self.static_properties, **self.mutable_properties}
-        print("Properties of the grid:")
-        print(f"\tGenerators:")
+        print("Properties of the grid:\n")
+        print(f"\tGenerators:\n")
         for key, value in grid_properties[cfg.GENERATORS].items():
             print(f"\t\t{key}: {value}")
-        print(f"\tStorages:")
+        print(f"\tStorages:\n")
         for key, value in grid_properties[cfg.STORAGES].items():
             print(f"\t\t{key}: {value}")
-        print(f"\tTransmission lines:")
+        print(f"\tTransmission lines:\n")
         for key, value in grid_properties[cfg.TRANSMISSION_LINES].items():
             print(f"\t\t{key}: {value}")
         print()
@@ -254,9 +258,9 @@ class AIPlan4GridAgent:
             disconnected_lines = np.where(self.initial_topology & ~current_topology)[0]
             connected_lines = np.where(~self.initial_topology & current_topology)[0]
             for line in disconnected_lines:
-                self.logger.info(f"\tLine {line} has been disconnected.")
+                self.logger.info(f"\tLine {line} has been disconnected")
             for line in connected_lines:
-                self.logger.info(f"\tLine {line} has been connected.")
+                self.logger.info(f"\tLine {line} has been connected")
             self.logger.info("Updating PTDF matrix and grid properties...")
             self.ptdf = self.get_ptdf()
             self.mutable_properties = self.get_mutable_properties()
@@ -342,7 +346,7 @@ class AIPlan4GridAgent:
             debug=self.debug,
         )
         if self.debug:
-            self.logger.info(f"Saving UP problem in {cfg.LOG_DIR}")
+            self.logger.debug(f"Saving UP problem in {cfg.LOG_DIR}")
             upp.save_problem()
         self.logger.info("Solving UP problem...")
         start = timer()
@@ -387,7 +391,7 @@ class AIPlan4GridAgent:
         if self.check_congestions() or self.check_topology():
             actions = self.get_UP_actions(self.env.nb_time_step)
         else:
-            self.logger.info("No congestion detected, doing nothing...")
+            self.logger.info(f"No congestion detected, doing nothing at time step {self.env.nb_time_step}")
             actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
         i = 0
         while i <= self.tactical_horizon - 1:
@@ -396,8 +400,6 @@ class AIPlan4GridAgent:
                 if len(lines_to_reconnect_in_next_action) > 0:
                     actions[i + 1].line_change_status = lines_to_reconnect_in_next_action
             all_zeros = not actions[i].to_vect().any()
-            if self.debug:
-                self.logger.debug(f"Performing action {actions[i]}")
             obs, reward, done, info = self.env.step(actions[i])
             results.append((obs, reward, done, info))
             self.curr_obs = results[-1][0]

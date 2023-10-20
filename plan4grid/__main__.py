@@ -1,5 +1,5 @@
-import argparse
-import configparser
+from argparse import ArgumentParser, Namespace
+from configparser import ConfigParser
 from os.path import join as pjoin
 
 import plan4grid.config as cfg
@@ -7,7 +7,7 @@ from plan4grid.Launcher import Launcher
 from plan4grid.utils import strtobool
 
 
-def fill_parser(parser: argparse.ArgumentParser):
+def fill_parser(parser: ArgumentParser):
     """Fill the given parser."""
     parser.add_argument(
         "-e",
@@ -41,21 +41,23 @@ def fill_parser(parser: argparse.ArgumentParser):
 
 def parse_ini(ini_file_path: str) -> dict:
     """Parse the given configuration file."""
-    config = configparser.ConfigParser()
-    config.read(ini_file_path)
+    try:
+        config = ConfigParser()
+        config.read(ini_file_path)
+        parameters_section = config[cfg.PARAMETERS]
+        parameters = {
+            cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
+            cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
+            cfg.SOLVER: parameters_section[cfg.SOLVER],
+            cfg.NOISE: strtobool(parameters_section[cfg.NOISE]),
+            cfg.TEST: strtobool(parameters_section[cfg.TEST]),
+        }
+        return parameters
+    except Exception:
+        raise Exception(f"An error occurred while parsing the configuration file: {ini_file_path}")
 
-    parameters_section = config[cfg.PARAMETERS]
-    parameters = {
-        cfg.TACTICAL_HORIZON: int(parameters_section[cfg.TACTICAL_HORIZON]),
-        cfg.STRATEGIC_HORIZON: int(parameters_section[cfg.STRATEGIC_HORIZON]),
-        cfg.SOLVER: parameters_section[cfg.SOLVER],
-        cfg.NOISE: strtobool(parameters_section[cfg.NOISE]),
-        cfg.TEST: strtobool(parameters_section[cfg.TEST]),
-    }
-    return parameters
 
-
-def main(args: argparse.Namespace):
+def main(args: Namespace):
     """Main function."""
     try:
         if args.config_file is None:
@@ -83,7 +85,7 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     fill_parser(parser)
     args = parser.parse_args()
     main(args)

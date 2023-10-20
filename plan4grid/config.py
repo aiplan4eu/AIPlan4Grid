@@ -64,7 +64,6 @@ LOG_DIR = pjoin(BASE_DIR, "log")
 UPP_SUFFIX = ".upp"
 PDDL_SUFFIX = ".pddl"
 LOG_SUFFIX = ".log"
-WARN_FILE = "warn.log"
 
 GENERATOR_ACTION_PREFIX = "gen"
 STORAGE_ACTION_PREFIX = "sto"

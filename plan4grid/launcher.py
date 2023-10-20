@@ -4,12 +4,7 @@ from typing import Union
 import grid2op
 from grid2op.Backend import PandaPowerBackend
 from grid2op.Chronics import FromHandlers
-from grid2op.Chronics.handlers import (
-    CSVHandler,
-    DoNothingHandler,
-    NoisyForecastHandler,
-    PerfectForecastHandler,
-)
+from grid2op.Chronics.handlers import CSVHandler, DoNothingHandler, NoisyForecastHandler, PerfectForecastHandler
 from tqdm import tqdm
 
 import plan4grid.config as cfg

@@ -12,7 +12,7 @@ pip install -r requirements/requirements.txt
 
 ```bash
 python -m plan4grid -h
-usage: python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>]
+usage: python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>] [-d]
 
 Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used.
 
@@ -24,6 +24,7 @@ options:
                         ID of the scenario to use.
   -c CONFIG_FILE, --config-file CONFIG_FILE
                         Configuration file path. If not given, the default configuration file will be used.
+  -d, --debug           Debug mode.
 ```
 
 ### Building documentation

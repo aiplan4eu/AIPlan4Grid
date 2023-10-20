@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-import sys
 from os.path import join as pjoin
 
 import numpy as np
@@ -27,31 +26,27 @@ def compute_size_array(array: np.ndarray) -> int:
 def setup_logger(
     name: str,
     log_dir: str = cfg.LOG_DIR,
-    level: int = 0,
-    redirect_warnings=True,
+    level: int = logging.INFO,
 ) -> logging.Logger:
     """Setup a logger.
 
     Args:
         name (str): name of the logger.
         log_dir (str, optional): name of the log directory. Defaults to cfg.LOG_DIR.
-        level (int, optional): level of the logger. Defaults to 0.
-        redirect_warnings (bool, optional): redirect warnings to a file. Defaults to True.
+        level (int, optional): level of the logger. Defaults to logging.INFO.
 
     Returns:
         logging.Logger: the logger.
     """
     os.makedirs(log_dir, exist_ok=True)
-    if redirect_warnings:
-        sys.stderr.write = open(pjoin(log_dir, cfg.WARN_FILE), "w", encoding="utf-8").write
-    logging.basicConfig(
-        filename=pjoin(log_dir, f"{name}{cfg.LOG_SUFFIX}"),
-        format="| %(levelname)-7s | %(asctime)s | %(message)s",
-        datefmt="%I:%M",
-        level=level,
-        force=True,
-    )
+    filename = pjoin(log_dir, f"{name}{cfg.LOG_SUFFIX}")
+    file_handler = logging.FileHandler(filename=filename)
+    formatter = logging.Formatter("| %(levelname)-7s | %(asctime)s | %(message)s", datefmt="%I:%M")
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(level)
     logger = logging.getLogger(name)
+    logger.addHandler(file_handler)
+    logger.setLevel(level)
     return logger
 
 
