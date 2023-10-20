@@ -348,7 +348,7 @@ class UnifiedPlanningProblem:
                         if nb_lines_effects == 0:
                             actions_costs.popitem()
                             pgen_actions.pop()
-                            self.logger.debug(f"Action {action.name} is useless and is removed")
+                            self.logger.warning(f"Action {action.name} is useless and is removed")
                         else:
                             action.add_effect(self.gen_moved[id][t], True)
                             action.add_precondition(Not(self.gen_moved[id][t]))
@@ -554,7 +554,7 @@ class UnifiedPlanningProblem:
                     if nb_lines_effects == 0:
                         actions_costs.popitem()
                         psto_actions.pop()
-                        self.logger.debug(f"Action {action.name} is useless and is removed")
+                        self.logger.warning(f"Action {action.name} is useless and is removed")
                     else:
                         action.add_effect(self.sto_moved[id][t], True)
                         action.add_precondition(Not(self.sto_moved[id][t]))
