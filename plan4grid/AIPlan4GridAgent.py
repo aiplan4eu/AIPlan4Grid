@@ -333,6 +333,7 @@ class AIPlan4GridAgent:
         Returns:
             list[ActionSpace]: grid2op actions to perform on the grid (one `ActionSpace` per time step)
         """
+        self.logger.info("\n")
         self.logger.info(f"Creating UP problem number {step}...")
         upp = UnifiedPlanningProblem(
             tactical_horizon=self.tactical_horizon,
@@ -404,7 +405,7 @@ class AIPlan4GridAgent:
                 break
             self.update_states()
             if all_zeros and (self.check_congestions() or self.check_topology()):
-                self.logger.info("\nNew congestion or topology change detected --> re-solving the UP problem...\n")
+                self.logger.info("New congestion or topology change detected --> re-solving the UP problem...")
                 actions = [None in range(i + 1)] + self.get_UP_actions(self.env.nb_time_step)
             i += 1
         return obs, reward, done, info

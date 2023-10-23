@@ -125,7 +125,7 @@ class Launcher:
             f"\nRunning the agent on scenario {self.scenario_id} for {nb_steps} steps of {self.tactical_horizon*self.time_step} minutes.\n"
         )
         cumulative_reward = 0
-        for i in tqdm(range(1, nb_steps + 1), desc="Steps", total=self.strategic_horizon):
+        for i in tqdm(range(1, nb_steps + 1), desc="Steps"):
             obs, reward, done, *_ = self.agent.progress()
             cumulative_reward += reward
             if done and i != (nb_steps):
