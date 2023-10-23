@@ -40,7 +40,7 @@ def setup_logger(
     """
     os.makedirs(log_dir, exist_ok=True)
     filename = pjoin(log_dir, f"{name}{cfg.LOG_SUFFIX}")
-    file_handler = logging.FileHandler(filename=filename)
+    file_handler = logging.FileHandler(filename=filename, mode="w")
     formatter = logging.Formatter("| %(levelname)-7s | %(asctime)s | %(message)s", datefmt="%I:%M")
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)

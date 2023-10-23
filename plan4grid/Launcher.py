@@ -129,7 +129,9 @@ class Launcher:
             obs, reward, done, *_ = self.agent.progress()
             cumulative_reward += reward
             if done and i != (nb_steps):
+                self.agent.logger.info("The agent didn't survive.")
                 break
         print(f"\nTotal reward: {cumulative_reward}")
         time.sleep(2)
         self.agent.display_grid()
+        print(f"Logs are available in {self.agent.log_file}")

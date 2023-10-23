@@ -54,8 +54,10 @@ class UnifiedPlanningProblem:
             level = DEBUG
         else:
             level = INFO
+
         name = f"problem_{self.id}"
         self.log_dir = pjoin(cfg.LOG_DIR, name)
+        self.log_file = pjoin(self.log_dir, f"{name}{cfg.LOG_SUFFIX}")
         self.logger = setup_logger(name=name, log_dir=self.log_dir, level=level)
 
         self.create_fluents()
@@ -570,7 +572,7 @@ class UnifiedPlanningProblem:
                 if not bool(self.forecasted_states[t][cfg.CONGESTED_STATUS][k]) and forecasted_flow > max_flow:
                     self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW] = max(forecasted_flow, max_flow)
                     self.logger.warning(
-                        f"Max flow updated for line: {k} from value {max_flow} to new value {forecasted_flow}"
+                        f"Max flow updated for line: {k} from value {max_flow} to new value {forecasted_flow} at time {t}"
                     )
 
     def create_actions(self, nb_gen_actions: int = 1, nb_sto_actions: int = 1):
@@ -750,10 +752,12 @@ class UnifiedPlanningProblem:
                     self.logger.debug(output)
                     return []
                 else:
+                    self.logger.info("")
+                    self.logger.info(f"Plan found!")
                     self.logger.info(f"Status: {output.status}")
-                    self.logger.info(f"{plan}")
+                    self.logger.info(f"{plan}\n")
                     if self.debug and len(plan.actions) > 0:
-                        self.logger.debug("Simulating plan...\n")
+                        self.logger.debug("Simulating plan...")
                         with SequentialSimulator(problem=self.problem) as simulator:
                             initial_state = simulator.get_initial_state()
                             minimize_cost_value = evaluate_quality_metric_in_initial_state(
@@ -792,4 +796,6 @@ class UnifiedPlanningProblem:
                                     new_state,
                                 )
                                 self.logger.debug(f"\tcost: {float(minimize_cost_value)}\n")
+                    for fh in self.logger.handlers:
+                        fh.close()
                     return plan.actions
