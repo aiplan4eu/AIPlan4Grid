@@ -128,7 +128,7 @@ class Launcher:
         for i in tqdm(range(1, nb_steps + 1), desc="Steps"):
             obs, reward, done, *_ = self.agent.progress()
             cumulative_reward += reward
-            if done and i != (nb_steps):
+            if done and i != nb_steps:
                 self.agent.logger.info("The agent didn't survive.")
                 break
         print(f"\nTotal reward: {cumulative_reward}")

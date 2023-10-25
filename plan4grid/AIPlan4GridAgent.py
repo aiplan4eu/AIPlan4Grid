@@ -175,11 +175,11 @@ class AIPlan4GridAgent:
         plot_helper.plot_obs(self.env.current_obs)
         plt.show()
 
-    def get_states(self) -> tuple[dict[str, np.array], dict[str, np.array]]:
+    def get_states(self) -> tuple[dict[str, np.array], list[dict[str, np.array]]]:
         """This function returns the initial states and the forecasted states of the grid.
 
         Returns:
-            tuple[dict[str, np.array], dict[str, np.array]]: initial states and forecasted states
+            tuple[dict[str, np.array], list[dict[str, np.array]]]: initial states and forecasted states
         """
         do_nothing_action = self.env.action_space({})
 
@@ -211,7 +211,8 @@ class AIPlan4GridAgent:
         return initial_states, forecasted_states
 
     def check_congestions(self, verbose: bool = True) -> bool:
-        """This function checks if there is a congestion on the grid on the current observation and on the forecasted observations.
+        """This function checks if there is a congestion on the grid on the current observation and on the forecasted
+        observations.
 
         Args:
             verbose (bool, optional): if True, the logger will print the info. Defaults to True.
@@ -251,7 +252,7 @@ class AIPlan4GridAgent:
                         line,
                         forecasted_flow,
                         max_flow,
-                        f"in {first_congestion_at+1} time steps",
+                        f"in {first_congestion_at + 1} time steps",
                     )
             return True
 
@@ -298,14 +299,14 @@ class AIPlan4GridAgent:
     ) -> list[dict[str, list[tuple[int, float]]]]:
         """This function converts the actions of the UP problem to the actions of the grid2op environment.
 
-        Args:
-            up_actions (list[InstantaneousAction]): list of actions of the UP problem, obtained by solving it with the `UnifiedPlanningProblem` class
+        Args: up_actions (list[InstantaneousAction]): list of actions of the UP problem, obtained by solving it with
+        the `UnifiedPlanningProblem` class
 
         Raises:
             RuntimeError: if the action type is not valid, it should be either `prod_target` or `storage_target`s
 
-        Returns:
-            list[dict[str, list[tuple[int, float]]]]: transposed actions of the UP problem to the `grid2op` environment, one action dict per time step
+        Returns: list[dict[str, list[tuple[int, float]]]]: transposed actions of the UP problem to the `grid2op`
+        environment, one action dict per time step
         """
         # first we create the list of dict that will be returned
         template_dict = {cfg.REDISPATCH: [], cfg.SET_STORAGE: []}
@@ -409,8 +410,8 @@ class AIPlan4GridAgent:
     def progress(self) -> tuple[BaseObservation, float, bool, dict]:
         """This function performs one step of the simulation.
 
-        Returns:
-            tuple[BaseObservation, float, bool, dict]: respectively the observation, the reward, the done flag and the info dict
+        Returns: tuple[BaseObservation, float, bool, dict]: respectively the observation, the reward, the done flag
+        and the info dict
         """
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

@@ -3,7 +3,6 @@ from logging import DEBUG, INFO
 from os.path import join as pjoin
 
 import numpy as np
-import unified_planning as up
 from unified_planning.engines import PlanGenerationResultStatus
 from unified_planning.engines.sequential_simulator import (
     evaluate_quality_metric,
@@ -25,7 +24,7 @@ class UnifiedPlanningProblem:
         ptdf: list[list],
         grid_params: dict,
         initial_states: dict,
-        forecasted_states: dict,
+        forecasted_states: list[dict],
         solver: str,
         problem_id: int,
         debug: bool,
@@ -218,7 +217,8 @@ class UnifiedPlanningProblem:
 
                         pgen_actions.append(
                             InstantaneousAction(f"gen_{id}_{direction}_{i}_{t}")
-                        )  # this action represents the increase or decrease of the setpoint of the generator by i MW at time t
+                        )  # this action represents the increase or decrease of the setpoint of the generator by i MW
+                        # at time t
                         action = pgen_actions[-1]
                         nb_lines_effects = 0
 
@@ -366,9 +366,8 @@ class UnifiedPlanningProblem:
 
         WE ASSUME THAT THERE IS NO LOSS OF ENERGY IN THE STORAGE BETWEEN TWO TIME STEPS.
 
-        Args:
-            direction (str): 'increase' or 'decrease'
-            nb_actions (int): number of actions + 1 to create between 0 and ramp (not really a ramp here, just the max charge or discharge of the storage)
+        Args: direction (str): 'increase' or 'decrease' nb_actions (int): number of actions + 1 to create between 0
+        and ramp (not really a ramp here, just the max charge or discharge of the storage)
 
         Returns:
             tuple[list[InstantaneousAction], dict[str, float]]: list of storages actions and their costs
@@ -380,7 +379,8 @@ class UnifiedPlanningProblem:
         pmin_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMIN][self.slack_id])
         pmax_slack = float(self.grid_params[cfg.GENERATORS][cfg.PMAX][self.slack_id])
 
-        # Detect first congestion and allow storage modification only in direction that is opposit to the congestion solving in time step before in order to help for preparation
+        # Detect first congestion and allow storage modification only in direction that is opposit to the congestion
+        # solving in time step before in order to help for preparation
         first_time_congestion = -1
         line_congested_at_first_congestion = []
         storage_no_charge_before_congestion = []
@@ -396,18 +396,20 @@ class UnifiedPlanningProblem:
                             self.grid_params[cfg.STORAGES][cfg.STORAGE_TO_SUBID][id]
                         )
                         if self.ptdf[k][connected_bus] > 0:
-                            # Do not allow storage id to charge before congestion, since solving congestion will need storage to charge
-                            # Unless soc is above 50% of max
+                            # Do not allow storage id to charge before congestion, since solving congestion will need
+                            # storage to charge Unless soc is above 50% of max
                             storage_no_charge_before_congestion.append(id)
                             self.logger.debug(
-                                f"Storage {id} adding to no charge before congestion because of first congestion in time step {t} on line {k}"
+                                f"Storage {id} adding to no charge before congestion because of first congestion in "
+                                f"time step {t} on line {k}"
                             )
                         else:
-                            # Do not allow storage id to discharge before congestion, since solving congestion will need storage to discharge
-                            # Unless soc is below 50% of max
+                            # Do not allow storage id to discharge before congestion, since solving congestion will
+                            # need storage to discharge Unless soc is below 50% of max
                             storage_no_discharge_before_congestion.append(id)
                             self.logger.debug(
-                                f"Storage {id} adding to no discharge before congestion because of first congestion in time step {t} on line {k}"
+                                f"Storage {id} adding to no discharge before congestion because of first congestion "
+                                f"in time step {t} on line {k}"
                             )
             if line_congested_at_first_congestion and t >= 0:
                 break
@@ -505,7 +507,8 @@ class UnifiedPlanningProblem:
                             <= float(self.grid_params[cfg.TRANSMISSION_LINES][k][cfg.MAX_FLOW]) * self.ptdf_threshold
                         ):
                             self.logger.debug(
-                                f"Effect of action {action.name} on flow {k} at time {t} is negligible given a precision threshold of {self.ptdf_threshold*100}% of the max flow"
+                                f"Effect of action {action.name} on flow {k} at time {t} is negligible given a "
+                                f"precision threshold of {self.ptdf_threshold*100}% of the max flow"
                             )
                             continue
 
@@ -578,9 +581,9 @@ class UnifiedPlanningProblem:
     def create_actions(self, nb_gen_actions: int = 1, nb_sto_actions: int = 1):
         """Create actions for the problem.
 
-        Args:
-            nb_gen_actions (int): number of actions to create between 0 and ramp for generators in each direction, so 2*(nb_gen_actions+1) actions are created
-            nb_sto_actions (int): number of actions to create between 0 and ramp for storages in each direction, so 2*(nb_sto_actions+1) actions are created
+        Args: nb_gen_actions (int): number of actions to create between 0 and ramp for generators in each direction,
+        so 2*(nb_gen_actions+1) actions are created nb_sto_actions (int): number of actions to create between 0 and
+        ramp for storages in each direction, so 2*(nb_sto_actions+1) actions are created
         """
         self.update_max_flows()
 
