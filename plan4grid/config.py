@@ -1,10 +1,11 @@
+import os
 from os.path import join as pjoin
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Parameters of the agent
-DEFAULT_INI_FILE = "parameters.ini"
+DEFAULT_INI_FILE = pjoin(BASE_DIR, "parameters.ini")
 PARAMETERS = "Parameters"
 TACTICAL_HORIZON = "tactical_horizon"
 STRATEGIC_HORIZON = "strategic_horizon"
@@ -59,6 +60,10 @@ LOADS = "loads"
 REDISPATCH = "redispatch"
 SET_STORAGE = "set_storage"
 ###########################################################
+
+RESULTS_DIR = pjoin(BASE_DIR, "results")
+AGENT_DIR = pjoin(RESULTS_DIR, "AIPlan4GridAgent")
+os.makedirs(AGENT_DIR, exist_ok=True)
 
 LOG_DIR = pjoin(BASE_DIR, "log")
 UPP_SUFFIX = ".upp"

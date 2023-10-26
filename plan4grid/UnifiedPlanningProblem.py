@@ -28,6 +28,8 @@ class UnifiedPlanningProblem:
         solver: str,
         problem_id: int,
         debug: bool,
+        _nb_gen_actions: int,
+        _nb_sto_actions: int,
     ):
         get_environment().credits_stream = None
 
@@ -44,6 +46,8 @@ class UnifiedPlanningProblem:
         self.solver = solver
         self.id = problem_id
         self.debug = debug
+        self._nb_gen_actions = _nb_gen_actions
+        self._nb_sto_actions = _nb_sto_actions
 
         self.nb_digits = 6
         self.float_precision = 10**-self.nb_digits
@@ -60,7 +64,7 @@ class UnifiedPlanningProblem:
         self.logger = setup_logger(name=name, log_dir=self.log_dir, level=level)
 
         self.create_fluents()
-        self.create_actions(nb_gen_actions=1, nb_sto_actions=1)
+        self.create_actions(self._nb_gen_actions, self._nb_sto_actions)
         self.create_problem()
 
     def create_fluents(self):

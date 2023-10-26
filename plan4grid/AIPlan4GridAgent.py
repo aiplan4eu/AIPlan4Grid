@@ -3,15 +3,16 @@ from copy import deepcopy
 from logging import DEBUG, INFO
 from math import atan, cos, sqrt
 from os.path import join as pjoin
-from timeit import default_timer as timer
+from time import perf_counter
 from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 from grid2op.Action import ActionSpace
 from grid2op.Environment import Environment
-from grid2op.Observation import BaseObservation
+from grid2op.Episode import EpisodeData
 from grid2op.PlotGrid import PlotMatplot
+from grid2op.Runner.aux_fun import _aux_add_data
 from pandapower.pd2ppc import _pd2ppc
 from pandapower.pypower.makePTDF import makePTDF
 
@@ -24,6 +25,88 @@ class AIPlan4GridAgent:
     """
     This class implements the AIPlan4Grid agent
     """
+
+    def _create_episode(self, path_save: str = cfg.AGENT_DIR) -> EpisodeData:
+        """This function creates the episode data `g2op` object that will be used to store the results.
+
+        Args:
+            path_save (str, optional): path where to save the results. Defaults to `cfg.RESULTS_DIR`.
+
+        Returns:
+            EpisodeData: episode data object
+        """
+        nb_timestep_max = self.env.chronics_handler.max_timestep()
+        efficient_storing = nb_timestep_max > 0
+        nb_timestep_max = max(nb_timestep_max, 0)
+
+        disc_lines_templ = np.full((1, self.env.backend.n_line), fill_value=False, dtype=np.bool_)
+        attack_templ = np.full((1, self.env._oppSpace.action_space.size()), fill_value=0.0, dtype=np.float32)
+
+        if efficient_storing:
+            times = np.full(nb_timestep_max, fill_value=np.NaN, dtype=np.float32)
+            rewards = np.full(nb_timestep_max, fill_value=np.NaN, dtype=np.float32)
+            actions = np.full((nb_timestep_max, self.env.action_space.n), fill_value=np.NaN, dtype=np.float32)
+            env_actions = np.full(
+                (nb_timestep_max, self.env._helper_action_env.n),
+                fill_value=np.NaN,
+                dtype=np.float32,
+            )
+            observations = np.full(
+                (nb_timestep_max + 1, self.env.observation_space.n),
+                fill_value=np.NaN,
+                dtype=np.float32,
+            )
+            disc_lines = np.full((nb_timestep_max, self.env.backend.n_line), fill_value=np.NaN, dtype=np.bool_)
+            attack = np.full(
+                (nb_timestep_max, self.env._opponent_action_space.n),
+                fill_value=0.0,
+                dtype=np.float32,
+            )
+            legal = np.full(nb_timestep_max, fill_value=True, dtype=np.bool_)
+            ambiguous = np.full(nb_timestep_max, fill_value=False, dtype=np.bool_)
+        else:
+            times = np.full(0, fill_value=np.NaN, dtype=np.float32)
+            rewards = np.full(0, fill_value=np.NaN, dtype=np.float32)
+            actions = np.full((0, self.env.action_space.n), fill_value=np.NaN, dtype=np.float32)
+            env_actions = np.full((0, self.env._helper_action_env.n), fill_value=np.NaN, dtype=np.float32)
+            observations = np.full((0, self.env.observation_space.n), fill_value=np.NaN, dtype=np.float32)
+            disc_lines = np.full((0, self.env.backend.n_line), fill_value=np.NaN, dtype=np.bool_)
+            attack = np.full((0, self.env._opponent_action_space.n), fill_value=0.0, dtype=np.float32)
+            legal = np.full(0, fill_value=True, dtype=np.bool_)
+            ambiguous = np.full(0, fill_value=False, dtype=np.bool_)
+
+        if efficient_storing:
+            observations[0, :] = self.env.reset().to_vect()
+        else:
+            observations = np.concatenate((observations, self.env.reset().to_vect().reshape(1, -1)))
+
+        episode = EpisodeData(
+            actions=actions,
+            env_actions=env_actions,
+            observations=observations,
+            rewards=rewards,
+            disc_lines=disc_lines,
+            times=times,
+            observation_space=self.env.observation_space,
+            action_space=self.env.action_space,
+            helper_action_env=self.env._helper_action_env,
+            path_save=path_save,
+            disc_lines_templ=disc_lines_templ,
+            attack_templ=attack_templ,
+            attack=attack,
+            attack_space=self.env._opponent_action_space,
+            name=self.env.chronics_handler.get_name(),
+            force_detail=True,
+            other_rewards=[],
+            legal=legal,
+            ambiguous=ambiguous,
+            has_legal_ambiguous=True,
+            logger=setup_logger("EpisodeData"),
+        )
+
+        episode.observations.objects[0] = episode.observations.helper.from_vect(observations[0, :])
+        episode.set_parameters(self.env)
+        return episode
 
     def get_grid_properties(self) -> dict:
         """This function returns the properties of the grid.
@@ -106,7 +189,10 @@ class AIPlan4GridAgent:
         solver: str,
         test: bool,
         debug: bool,
+        _nb_gen_actions: int,
+        _nb_sto_actions: int,
     ):
+        # WARNING: THE ORDER OF THE FOLLOWING SETS IS IMPORTANT
         if env.n_storage > 0 and not env.action_space.supports_type("set_storage"):
             raise RuntimeError(
                 "Impossible to create this class with an environment that does not allow "
@@ -134,6 +220,8 @@ class AIPlan4GridAgent:
         self.time_step = self.env.current_obs.delta_time  # time step in minutes
         self.solver = solver
         self.debug = debug
+        self._nb_gen_actions = _nb_gen_actions
+        self._nb_sto_actions = _nb_sto_actions
 
         if self.debug:
             level = DEBUG
@@ -143,6 +231,8 @@ class AIPlan4GridAgent:
         name = __name__.split(".")[-1]
         self.log_file = pjoin(cfg.LOG_DIR, f"{name}{cfg.LOG_SUFFIX}")
         self.logger = setup_logger(name=name, level=level)
+
+        self.episode = self._create_episode()
 
     def print_summary(self):
         """Print the parameters of the agent."""
@@ -345,15 +435,16 @@ class AIPlan4GridAgent:
                 raise RuntimeError("The action type is not valid!")
         return g2op_actions
 
-    def get_UP_actions(self, step: int, verbose: bool = True) -> list[ActionSpace]:
-        """This function returns the `UnifiedPlanning` actions to perform on the grid.
+    def get_UP_actions(self, step: int, verbose: bool = True) -> tuple[list[ActionSpace], float, float]:
+        """This function returns the `UnifiedPlanning` actions to perform on the grid and the time it took to solve the associated UP problem.
 
         Args:
             step (int): current step of the simulation
             verbose (bool, optional): if True, the logger will print the steps of the algorithm. Defaults to True.
 
         Returns:
-            list[ActionSpace]: grid2op actions to perform on the grid (one `ActionSpace` per time step)
+            tuple[list[ActionSpace], float, float]: grid2op actions to perform on the grid (one `ActionSpace` per time step),
+            the beginning time of the solving of the UP problem and the end time of the solving of the UP problem.
         """
         if verbose:
             self.logger.info("\n")
@@ -368,6 +459,8 @@ class AIPlan4GridAgent:
             solver=self.solver,
             problem_id=step,
             debug=self.debug,
+            _nb_gen_actions=self._nb_gen_actions,
+            _nb_sto_actions=self._nb_sto_actions,
         )
         if self.debug:
             if verbose:
@@ -375,16 +468,17 @@ class AIPlan4GridAgent:
             upp.save_problem()
         if verbose:
             self.logger.info("Solving UP problem...")
-        start = timer()
+        beg_ = perf_counter()
         up_plan = upp.solve()
-        end = timer()
+        end_ = perf_counter()
+        time_act = end_ - beg_
         if verbose:
-            self.logger.info(f"Problem solved in {end - start} seconds")
+            self.logger.info(f"Problem solved in {time_act} seconds")
         g2op_actions = [self.env.action_space(d) for d in self.up_actions_to_g2op_actions(up_plan)]
         if len(g2op_actions) != self.tactical_horizon:
             # extend the actions to the tactical horizon with do nothing actions
             g2op_actions.extend([self.env.action_space({}) for _ in range(self.tactical_horizon - len(g2op_actions))])
-        return g2op_actions
+        return g2op_actions, beg_, end_
 
     def check_maintenance(self) -> bool:
         """This function checks if there is a maintenance on the grid on the current observation.
@@ -407,20 +501,26 @@ class AIPlan4GridAgent:
             return True
         return False
 
-    def progress(self) -> tuple[BaseObservation, float, bool, dict]:
+    def progress(self) -> tuple[float, float, bool]:
         """This function performs one step of the simulation.
 
-        Returns: tuple[BaseObservation, float, bool, dict]: respectively the observation, the reward, the done flag
-        and the info dict
+        Returns:
+            tuple[float, float, bool]: reward, time it took to perform the actions and if the simulation is done
         """
         with warnings.catch_warnings():
+            efficient_storing = self.env.chronics_handler.max_timestep() > 0
+            global_time_act = 0
             warnings.simplefilter("ignore")
             self.update_states()
             if self.check_congestions() or self.check_topology():
-                actions = self.get_UP_actions(self.env.nb_time_step)
+                actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step)
+                global_time_act += end_ - beg_
             else:
                 self.logger.info(f"No congestion detected, doing nothing at time step {self.env.nb_time_step}")
+                beg_ = perf_counter()
                 actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
+                end_ = perf_counter()
+                global_time_act += end_ - beg_
             i = 0
             while i <= self.tactical_horizon - 1:
                 if self.check_maintenance():
@@ -431,11 +531,27 @@ class AIPlan4GridAgent:
                         actions[i + 1].line_change_status = lines_to_reconnect_in_next_action
                 all_zeros = not actions[i].to_vect().any()
                 obs, reward, done, info = self.env.step(actions[i])
+                opp_attack = self.env._oppSpace.last_attack
+                reward = _aux_add_data(
+                    reward,
+                    self.env,
+                    self.episode,
+                    efficient_storing,
+                    end_,
+                    beg_,
+                    actions[i],
+                    obs,
+                    info,
+                    self.env.nb_time_step,
+                    opp_attack,
+                )
                 if self.env.done:
                     break
                 self.update_states()
                 if all_zeros and (self.check_congestions(verbose=False) or self.check_topology(verbose=False)):
                     self.logger.info("New congestion or topology change detected --> re-solving the UP problem...")
-                    actions = [None in range(i + 1)] + self.get_UP_actions(self.env.nb_time_step, verbose=False)
+                    actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step, verbose=False)
+                    actions = [None in range(i + 1)] + actions
+                    global_time_act += end_ - beg_
                 i += 1
-            return obs, reward, done, info
+            return reward, global_time_act, done

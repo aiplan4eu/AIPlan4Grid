@@ -1,4 +1,4 @@
-import time
+from time import perf_counter
 from typing import Union
 
 import grid2op
@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 import plan4grid.config as cfg
 from plan4grid.AIPlan4GridAgent import AIPlan4GridAgent
-from plan4grid.utils import clean_logs
+from plan4grid.utils import clean_logs, clean_agent_results
 
 
 class Launcher:
@@ -71,6 +71,8 @@ class Launcher:
         noise: bool = False,
         test: bool = False,
         debug: bool = False,
+        _nb_gen_actions: int = 1,
+        _nb_sto_actions: int = 1,
     ):
         self.env_name = env_name
         self.test = test
@@ -85,6 +87,8 @@ class Launcher:
         self.solver = solver
         self.noise = noise
         self.debug = debug
+        self._nb_gen_actions = _nb_gen_actions
+        self._nb_sto_actions = _nb_sto_actions
 
         self.parameters = {
             cfg.TACTICAL_HORIZON: self.tactical_horizon,
@@ -95,6 +99,7 @@ class Launcher:
         self._check_parameters()
 
         clean_logs()
+        clean_agent_results()
 
         try:
             self.env = grid2op.make(
@@ -113,10 +118,16 @@ class Launcher:
             solver=self.solver,
             test=self.test,
             debug=self.debug,
+            _nb_gen_actions=self._nb_gen_actions,
+            _nb_sto_actions=self._nb_sto_actions,
         )
 
-    def launch(self):
-        """Launch the agent."""
+    def launch(self, save: bool = True):
+        """Launch the agent on the environment.
+
+        Args:
+            save (bool, optional): Whether to save the results or not. Defaults to True.
+        """
         if self.debug:
             self.agent.print_summary()
             self.agent.print_grid_properties()
@@ -125,13 +136,26 @@ class Launcher:
             f"\nRunning the agent on scenario {self.scenario_id} for {nb_steps} steps of {self.tactical_horizon*self.time_step} minutes.\n"
         )
         cumulative_reward = 0
+        beg_ = perf_counter()
         for i in tqdm(range(1, nb_steps + 1), desc="Steps"):
-            obs, reward, done, *_ = self.agent.progress()
+            reward, time_act, done = self.agent.progress()
             cumulative_reward += reward
             if done and i != nb_steps:
                 self.agent.logger.info("The agent didn't survive.")
                 break
+        end_ = perf_counter()
         print(f"\nTotal reward: {cumulative_reward}")
-        time.sleep(2)
         self.agent.display_grid()
         print(f"Logs are available in {self.agent.log_file}")
+        if save:
+            self.agent.episode.set_game_over(self.env.nb_time_step)
+            self.agent.episode.set_meta(
+                self.env,
+                self.env.nb_time_step,
+                cumulative_reward,
+                env_seed=None,
+                agent_seed=None,
+            )
+            self.agent.episode.set_episode_times(self.env, time_act, beg_, end_)
+            self.agent.episode.to_disk()
+            print(f"Results are available in {cfg.AGENT_DIR}")

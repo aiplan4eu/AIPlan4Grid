@@ -71,3 +71,11 @@ def clean_logs():
         shutil.rmtree(cfg.LOG_DIR)
     except FileNotFoundError:
         pass
+
+
+def clean_agent_results():
+    """Remove recursively the results directory if it exists."""
+    try:
+        shutil.rmtree(cfg.AGENT_DIR)
+    except FileNotFoundError:
+        pass

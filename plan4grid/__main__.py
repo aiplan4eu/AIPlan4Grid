@@ -7,7 +7,7 @@ from plan4grid.Launcher import Launcher
 from plan4grid.utils import strtobool
 
 
-def fill_parser(parser: ArgumentParser):
+def _fill_parser(parser: ArgumentParser):
     """Fill the given parser."""
     parser.add_argument(
         "-e",
@@ -39,7 +39,7 @@ def fill_parser(parser: ArgumentParser):
     parser.description = "Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used."
 
 
-def parse_ini(ini_file_path: str) -> dict:
+def _parse_ini(ini_file_path: str) -> dict:
     """Parse the given configuration file."""
     try:
         config = ConfigParser()
@@ -62,9 +62,9 @@ def main(args: Namespace):
     try:
         if args.config_file is None:
             ini_file_path = pjoin(cfg.BASE_DIR, cfg.DEFAULT_INI_FILE)
-            parameters = parse_ini(ini_file_path)
+            parameters = _parse_ini(ini_file_path)
         else:
-            parameters = parse_ini(args.config_file)
+            parameters = _parse_ini(args.config_file)
 
         if str(args.scenario_id).isdigit():
             args.scenario_id = int(args.scenario_id)
@@ -86,6 +86,6 @@ def main(args: Namespace):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    fill_parser(parser)
+    _fill_parser(parser)
     args = parser.parse_args()
     main(args)
