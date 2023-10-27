@@ -56,6 +56,14 @@ test = False # Whether to run the agent in test mode or not
 
 You can also run the agent from a notebook using the `Launcher` class. See the [notebooks](notebooks) folder and the API documentation for more information.
 
+## Development requirements
+
+In order to develop the package, you need to install the required dependencies for development. Moreover, it is highly recommended to use a virtual environment.
+
+```bash
+pip install -r requirements/requirements.txt
+```
+
 ## Building documentation
 
 Documentation can be built using sphinx and by installing required dependencies.
@@ -89,11 +97,3 @@ chmod +x visualize.sh
 ```
 
 Where `<g2op_env_path>` is the path to the environment data directory stored by [Grid2Op](https://github.com/rte-france/Grid2Op) (stored in a folder called "`data_grid2op`").
-
-## Development requirements
-
-In order to develop the package, you need to install the required dependencies for development. Moreover, it is highly recommended to use a virtual environment.
-
-```bash
-pip install -r requirements/requirements.txt
-```
