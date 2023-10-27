@@ -1,6 +1,10 @@
-Grid2Op==1.9.5
+Grid2Op
+numba==0.56.4
+unified-planning==1.0.0
+up-enhsp==0.0.15
 numpy==1.23.5
 pandapower==2.13.1
-matplotlib==3.8.0
-tqdm==4.66.1
-setuptools==68.2.0
+matplotlib
+tqdm
+setuptools
+ipykernel # for jupyter notebook

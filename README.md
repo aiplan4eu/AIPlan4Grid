@@ -76,6 +76,8 @@ chmod +x build_pkg.sh
 ./build_pkg.sh
 ```
 
+Note: if you want to update the version number of the package, you'll have to do it in the `setup.py` file **AND** in the `__init__.py` file of the `plan4grid` folder (the `__version__` variable) before building the package.
+
 ## Grid2Viz
 
 After running the agent, you can visualize the actions he took and the grid states using the [Grid2Viz tool](https://github.com/rte-france/grid2viz).
