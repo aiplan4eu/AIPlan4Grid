@@ -3,6 +3,7 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 
+cd ..
 echo "Installing grid2viz..."
 pip install grid2viz
 echo "Launching grid2viz web app..."

@@ -15,8 +15,8 @@ with open(path.join(HERE, "README.md"), encoding="utf-8") as f:
 # This call to setup() does all the work
 setup(
     name="plan4grid",
-    version="0.0.5",
-    description="Demo library",
+    version="1.0.0",
+    description="AIPlan4Grid: a Python library for the AIPlan4EU project",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/aiplan4eu/AIPlan4Grid",

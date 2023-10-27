@@ -1,3 +1,4 @@
+cd ..
 echo "Removing old build files..."
 rm -rf dist/ build/ plan4grid.egg-info/
 echo ""
@@ -12,3 +13,6 @@ echo ""
 
 echo "Checking the package..."
 twine check dist/*
+
+echo "Installing the package..."
+pip install dist/plan4grid-0.0.5-py3-none-any.whl
