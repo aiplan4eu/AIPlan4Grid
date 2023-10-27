@@ -1,3 +1,4 @@
+import logging
 from time import perf_counter
 from typing import Union
 
@@ -9,7 +10,7 @@ from tqdm import tqdm
 
 import plan4grid.config as cfg
 from plan4grid.AIPlan4GridAgent import AIPlan4GridAgent
-from plan4grid.utils import clean_logs, clean_agent_results
+from plan4grid.utils import clean_agent_results, clean_logs
 
 
 class Launcher:
@@ -159,3 +160,4 @@ class Launcher:
             self.agent.episode.set_episode_times(self.env, time_act, beg_, end_)
             self.agent.episode.to_disk()
             print(f"Results are available in {cfg.AGENT_DIR}")
+        logging.shutdown()
