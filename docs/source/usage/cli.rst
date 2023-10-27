@@ -8,7 +8,9 @@ Requirements
 
 .. code:: bash
 
-   pip install plan4grid
+   python -m pip install git+https://github.com/aiplan4eu/AIPlan4Grid.git@<version>
+
+Where `<version>` is the version of the release you want to install.
 
 Main usage
 ----------

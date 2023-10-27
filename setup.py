@@ -4,6 +4,7 @@ from codecs import open
 from os import path
 from os.path import join as pjoin
 from setuptools import setup
+import plan4grid
 
 # The directory containing this file
 HERE = path.abspath(path.dirname(__file__))
@@ -15,7 +16,7 @@ with open(path.join(HERE, "README.md"), encoding="utf-8") as f:
 # This call to setup() does all the work
 setup(
     name="plan4grid",
-    version="1.0.0",
+    version=plan4grid.__version__,
     description="AIPlan4Grid: a Python library for the AIPlan4EU project",
     long_description=long_description,
     long_description_content_type="text/markdown",

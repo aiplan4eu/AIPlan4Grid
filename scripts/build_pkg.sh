@@ -15,4 +15,4 @@ echo "Checking the package..."
 twine check dist/*
 
 echo "Installing the package..."
-pip install dist/plan4grid-0.0.5-py3-none-any.whl
+pip install .

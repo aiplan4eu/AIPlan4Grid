@@ -6,11 +6,13 @@ This repository contains the code of the AIPlan4Grid agent, which is an agent th
 
 Python 3.10.0 is required.
 
-You can install the package from PyPI with:
+You can install the package with:
 
 ```bash
-pip install plan4grid
+python -m pip install git+https://github.com/aiplan4eu/AIPlan4Grid.git@<version>
 ```
+
+Where `<version>` is the version of the released package you want to install.
 
 Or you can also install the package from the wheel file located in the `dist` folder after building the package. See the [Building the package](#building-the-package) section for more information.
 

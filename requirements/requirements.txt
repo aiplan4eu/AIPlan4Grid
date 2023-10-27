@@ -3,5 +3,4 @@ numpy==1.23.5
 pandapower==2.13.1
 matplotlib==3.8.0
 tqdm==4.66.1
-plan4grid==0.0.5
 setuptools==68.2.0
