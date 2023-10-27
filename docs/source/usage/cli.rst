@@ -4,7 +4,7 @@ AIPlan4Grid CLI
 Requirements
 ------------
 
-Python 3.10.0 is required.
+.. note:: Python 3.10.0 is required.
 
 .. code:: bash
 
@@ -29,3 +29,19 @@ Main usage
    -c CONFIG_FILE, --config-file CONFIG_FILE
                            Configuration file path. If not given, the default configuration file will be used.
    -d, --debug           Debug mode.
+
+Configuration file
+------------------
+
+A configuration file can be provided to the agent. If no configuration file is provided, the default configuration file will be used. The default configuration file is `parameters.ini`.
+
+It looks like this:
+
+::
+
+   [Parameters]
+   tactical_horizon = 1 # The number of steps to look ahead in the future
+   strategic_horizon = 288 # The number of time steps over which the agent is operated
+   solver = enhsp # The solver to use (currently only enhsp is supported)
+   noise = False # Whether to add noise to the observations or not
+   test = False # Whether to run the agent in test mode or not
