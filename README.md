@@ -1,6 +1,6 @@
 # AIPlan4Grid
 
-This repository contains the code of the AIPlan4Grid agent, which is an agent that uses the [UnifiedPlanning](https://github.com/aiplan4eu/unified-planning) optimization framework in order to solve the [Grid2Op](https://github.com/rte-france/Grid2Op) power grid control problem.
+This repository contains the code of the AIPlan4Grid agent, which is an agent that uses the [UnifiedPlanning](https://github.com/aiplan4eu/unified-planning) optimization framework in order to solve powergrid control problem thanks to the [Grid2Op](https://github.com/rte-france/Grid2Op) modelisation.
 
 ## Installation of the package
 
@@ -54,7 +54,7 @@ test = False # Whether to run the agent in test mode or not
 
 ### Notebook
 
-You can also run the agent from a notebook using the `Launcher` class. See the [notebooks](notebooks) folder and the API documentation for more information.
+You can also run the agent from a notebook using the `Launcher` class. **See the [notebooks](notebooks) folder** and the API documentation for more information.
 
 ## Development requirements
 

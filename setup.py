@@ -15,19 +15,19 @@ with open(path.join(HERE, "README.md"), encoding="utf-8") as f:
 # This call to setup() does all the work
 setup(
     name="plan4grid",
-    version="1.0.0-beta",
-    description="AIPlan4Grid: a Python library for the AIPlan4EU project",
+    version="1.0.0-beta.1",
+    description="AIPlan4Grid: Trying to Run a Power Network with Planning Optimization",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/aiplan4eu/AIPlan4Grid",
     author="Martin Debouté",
     author_email="martin.deboute@artelys.com",
-    license="Apache 2.0",
+    license="Mozilla Public License 2.0 (MPL 2.0)",
     classifiers=[
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
-        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
     ],
     packages=["plan4grid"],
     include_package_data=True,
