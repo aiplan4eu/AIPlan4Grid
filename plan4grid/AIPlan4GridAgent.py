@@ -548,9 +548,8 @@ class AIPlan4GridAgent:
                 if self.env.done:
                     break
                 self.update_states()
-                if all_zeros and (self.check_congestions(verbose=False) or self.check_topology(verbose=False)):
-                    self.logger.info("New congestion or topology change detected --> re-solving the UP problem...")
-                    actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step, verbose=False)
+                if all_zeros and (self.check_congestions() or self.check_topology()):
+                    actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step)
                     actions = [None in range(i + 1)] + actions
                     global_time_act += end_ - beg_
                 i += 1
