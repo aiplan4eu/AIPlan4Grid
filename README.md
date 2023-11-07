@@ -93,7 +93,7 @@ After running the agent, you can visualize the actions he took and the grid stat
 ```bash
 cd scripts
 chmod +x visualize.sh
-./visualize.sh <g2op_env_path>
+./visualize.sh <results_path> <g2op_env_path>
 ```
 
-Where `<g2op_env_path>` is the path to the environment data directory stored by [Grid2Op](https://github.com/rte-france/Grid2Op) (stored in a folder called "`data_grid2op`").
+Where `<results_path>` is the path to the results directory (stored in a folder called "`results`") and `<g2op_env_path>` is the path to the environment data directory stored by [Grid2Op](https://github.com/rte-france/Grid2Op) in a folder called "`data_grid2op`".
