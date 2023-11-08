@@ -1,7 +1,7 @@
 # Notebooks
 
 This folder contains several notebooks in order to show how you can use the `plan4grid` Python package.
-You must look at them in the following order:
+You should look at them in the following order:
 
 1. `one_time_step_1.ipynb`
 2. `one_time_step_2.ipynb`
