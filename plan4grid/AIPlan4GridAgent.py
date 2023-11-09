@@ -537,12 +537,11 @@ class AIPlan4GridAgent:
                 global_time_act += end_ - beg_
             i = 0
             while i <= self.tactical_horizon - 1:
+                lines_to_reconnect_in_next_action=[]
                 if self.check_maintenance():
                     lines_to_reconnect_in_next_action = [
                         line_id for line_id in self.lines_to_reconnect if line_id[1] == 1
                     ]
-                    if len(lines_to_reconnect_in_next_action) > 0:
-                        actions[1].line_change_status = lines_to_reconnect_in_next_action
                 if actions[0] != self.env.action_space({}):
                     self.logger.info(f" UP agent has returned actions to be applied. {actions[0]}")
                 obs, reward, done, info = self.env.step(actions[0])
@@ -569,5 +568,11 @@ class AIPlan4GridAgent:
                         global_time_act += end_ - beg_
                     else:
                         self.logger.info(f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}")
+                        if self.tactical_horizon>1:
+                            actions = actions[1:] + [self.env.action_space({})]
+                        else:
+                            actions = [self.env.action_space({})]
+                    if len(lines_to_reconnect_in_next_action) > 0:
+                        actions[0].line_change_status = lines_to_reconnect_in_next_action
                 i += 1
             return reward, global_time_act, done
