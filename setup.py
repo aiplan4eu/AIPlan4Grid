@@ -15,7 +15,7 @@ with open(path.join(HERE, "README.md"), encoding="utf-8") as f:
 # This call to setup() does all the work
 setup(
     name="plan4grid",
-    version="1.0.0-beta.1",
+    version="1.0.0",
     description="AIPlan4Grid: Trying to Run a Power Network with Planning Optimization",
     long_description=long_description,
     long_description_content_type="text/markdown",

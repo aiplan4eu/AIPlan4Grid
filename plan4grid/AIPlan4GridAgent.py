@@ -398,22 +398,19 @@ class AIPlan4GridAgent:
         Returns: list[dict[str, list[tuple[int, float]]]]: transposed actions of the UP problem to the `grid2op`
         environment, one action dict per time step
         """
-        # first we create the list of dict that will be returned
         template_dict = {}
         g2op_actions = [deepcopy(template_dict)]
-        # fetch the slack bus id
         slack_id = np.where(self.grid_properties[cfg.GENERATORS][cfg.SLACK])[0][0]
-        # then we parse the up actions
         slack_value = 0
-        for idx,action in enumerate(up_actions):
+        for idx, action in enumerate(up_actions):
             action = action.action.name
-            if action == cfg.ADVANCE_STEP_ACTION :
-                if (slack_value!=0):
+            if action == cfg.ADVANCE_STEP_ACTION:
+                if slack_value != 0:
                     if cfg.REDISPATCH in g2op_actions[-1]:
                         g2op_actions[-1][cfg.REDISPATCH].append((slack_id, slack_value))
                     else:
                         g2op_actions[-1][cfg.REDISPATCH] = [(slack_id, slack_value)]
-                if idx != (len(up_actions)-1):
+                if idx != (len(up_actions) - 1):
                     new_dict = deepcopy(template_dict)
                     g2op_actions.append(new_dict)
                 slack_value = 0
@@ -440,11 +437,11 @@ class AIPlan4GridAgent:
                 if cfg.SET_STORAGE in g2op_actions[-1]:
                     g2op_actions[-1][cfg.SET_STORAGE].append((id, value))
                 else:
-                    g2op_actions[-1][cfg.SET_STORAGE]=[(id, value)]
+                    g2op_actions[-1][cfg.SET_STORAGE] = [(id, value)]
                 slack_value += value
             else:
                 raise RuntimeError("The action type is not valid!")
-        self.logger.info(f" current planified actions from latest UP solve {g2op_actions}")
+        self.logger.info(f"Current planified actions from latest UP solve: {g2op_actions}")
         return g2op_actions
 
     def get_UP_actions(self, step: int, verbose: bool = True) -> tuple[list[ActionSpace], float, float]:
@@ -485,7 +482,7 @@ class AIPlan4GridAgent:
         end_ = perf_counter()
         time_act = end_ - beg_
         if not up_plan:
-            self.logger.info(" No feasible plan found ! ")
+            self.logger.info("No feasible plan found!")
         if verbose:
             self.logger.info(f"Problem solved in {time_act} seconds")
         g2op_actions = [self.env.action_space(d) for d in self.up_actions_to_g2op_actions(up_plan)]
@@ -530,20 +527,22 @@ class AIPlan4GridAgent:
                 actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step)
                 global_time_act += end_ - beg_
             else:
-                self.logger.info(f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}")
+                self.logger.info(
+                    f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}"
+                )
                 beg_ = perf_counter()
                 actions = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
                 end_ = perf_counter()
                 global_time_act += end_ - beg_
             i = 0
             while i <= self.tactical_horizon - 1:
-                lines_to_reconnect_in_next_action=[]
+                lines_to_reconnect_in_next_action = []
                 if self.check_maintenance():
                     lines_to_reconnect_in_next_action = [
                         line_id for line_id in self.lines_to_reconnect if line_id[1] == 1
                     ]
                 if actions[0] != self.env.action_space({}):
-                    self.logger.info(f" UP agent has returned actions to be applied. {actions[0]}")
+                    self.logger.info(f"UP agent has returned actions to be applied:\n\n {actions[0]}\n")
                 obs, reward, done, info = self.env.step(actions[0])
                 opp_attack = self.env._oppSpace.last_attack
                 reward = _aux_add_data(
@@ -561,14 +560,16 @@ class AIPlan4GridAgent:
                 )
                 if self.env.done:
                     break
-                if (i != self.tactical_horizon - 1):
+                if i != self.tactical_horizon - 1:
                     self.update_states()
-                    if (self.check_congestions() or self.check_topology()):
+                    if self.check_congestions() or self.check_topology():
                         actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step)
                         global_time_act += end_ - beg_
                     else:
-                        self.logger.info(f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}")
-                        if self.tactical_horizon>1:
+                        self.logger.info(
+                            f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}"
+                        )
+                        if self.tactical_horizon > 1:
                             actions = actions[1:] + [self.env.action_space({})]
                         else:
                             actions = [self.env.action_space({})]

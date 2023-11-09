@@ -759,7 +759,6 @@ class UnifiedPlanningProblem:
                     self.logger.debug(output)
                     return []
                 else:
-                    self.logger.info("")
                     self.logger.info(f"Plan found!")
                     self.logger.info(f"Status: {output.status}")
                     self.logger.info(f"{plan}\n")

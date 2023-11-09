@@ -35,7 +35,13 @@ def _fill_parser(parser: ArgumentParser):
         required=False,
         action="store_true",
     )
-    parser.usage = "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>] [-d]"
+    parser.add_argument(
+        "--save",
+        help="Save the results.",
+        required=False,
+        action="store_true",
+    )
+    parser.usage = "python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>] [-d] [--save]"
     parser.description = "Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used."
 
 
@@ -79,7 +85,7 @@ def main(args: Namespace):
             test=parameters[cfg.TEST],
             debug=args.debug,
         )
-        launcher.launch()
+        launcher.launch(save=args.save)
     except Exception as e:
         print(e)
 

@@ -123,11 +123,11 @@ class Launcher:
             _nb_sto_actions=self._nb_sto_actions,
         )
 
-    def launch(self, save: bool = True):
+    def launch(self, save: bool = False):
         """Launch the agent on the environment.
 
         Args:
-            save (bool, optional): Whether to save the results or not. Defaults to True.
+            save (bool, optional): Whether to save the results or not. Defaults to False.
         """
         if self.debug:
             self.agent.print_summary()

@@ -18,11 +18,11 @@ Main usage
 .. code:: bash
 
    python -m plan4grid -h
-   usage: python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>] [-d]
+   usage: python -m plan4grid [-h] -e <env_name> -s <scenario_id> [-c <config_file>] [-d] [--save]
 
    Run the AIPlan4Grid agent on the given environment with the given scenario. If no configuration file is given, the default configuration file will be used.
 
-   options:
+   optional arguments:
    -h, --help            show this help message and exit
    -e ENV_NAME, --env-name ENV_NAME
                            Name of the environment to use.
@@ -31,6 +31,7 @@ Main usage
    -c CONFIG_FILE, --config-file CONFIG_FILE
                            Configuration file path. If not given, the default configuration file will be used.
    -d, --debug           Debug mode.
+   --save                Save the results.
 
 Configuration file
 ------------------

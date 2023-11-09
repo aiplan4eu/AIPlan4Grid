@@ -1,4 +1,4 @@
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 import plan4grid.AIPlan4GridAgent
 import plan4grid.Launcher
 import plan4grid.UnifiedPlanningProblem
