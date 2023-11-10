@@ -222,8 +222,8 @@ class AIPlan4GridAgent:
         self.debug = debug
         self._nb_gen_actions = _nb_gen_actions
         self._nb_sto_actions = _nb_sto_actions
-        self.up_status=0
-        self.actionlist = []
+        self.up_status = 0
+        self.action_list = []
 
         if self.debug:
             level = DEBUG
@@ -482,7 +482,7 @@ class AIPlan4GridAgent:
         up_plan = upp.solve()
         end_ = perf_counter()
         time_act = end_ - beg_
-        self.up_status=0
+        self.up_status = 0
         if not up_plan:
             self.logger.info("No feasible plan found!")
             self.up_status = 1
@@ -529,14 +529,14 @@ class AIPlan4GridAgent:
             if self.check_congestions() or self.check_topology():
                 actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step)
                 global_time_act += end_ - beg_
-                if self.up_status==0:
-                    self.actionlist=actions
+                if self.up_status == 0:
+                    self.action_list = actions
             else:
                 self.logger.info(
                     f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}"
                 )
                 beg_ = perf_counter()
-                self.actionlist = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
+                self.action_list = [self.env.action_space({}) for _ in range(self.tactical_horizon)]
                 end_ = perf_counter()
                 global_time_act += end_ - beg_
             i = 0
@@ -546,13 +546,13 @@ class AIPlan4GridAgent:
                     lines_to_reconnect_in_next_action = [
                         line_id for line_id in self.lines_to_reconnect if line_id[1] == 1
                     ]
-                if self.actionlist[0] != self.env.action_space({}):
-                    self.logger.info(f"UP agent has returned actions to be applied:\n\n {self.actionlist[0]}\n")
-                obs, reward, done, info = self.env.step(self.actionlist[0])
+                if self.action_list[0] != self.env.action_space({}):
+                    self.logger.info(f"UP agent has returned actions to be applied:\n\n {self.action_list[0]}\n")
+                obs, reward, done, info = self.env.step(self.action_list[0])
                 if self.tactical_horizon > 1:
-                    self.actionlist = self.actionlist[1:] + [self.env.action_space({})]
+                    self.action_list = self.action_list[1:] + [self.env.action_space({})]
                 else:
-                    self.actionlist = [self.env.action_space({})]
+                    self.action_list = [self.env.action_space({})]
                 opp_attack = self.env._oppSpace.last_attack
                 reward = _aux_add_data(
                     reward,
@@ -561,7 +561,7 @@ class AIPlan4GridAgent:
                     efficient_storing,
                     end_,
                     beg_,
-                    self.actionlist[0],
+                    self.action_list[0],
                     obs,
                     info,
                     self.env.nb_time_step,
@@ -573,14 +573,14 @@ class AIPlan4GridAgent:
                     self.update_states()
                     if self.check_congestions() or self.check_topology():
                         actions, beg_, end_ = self.get_UP_actions(self.env.nb_time_step)
-                        if self.up_status==0:
-                            self.actionlist=actions
+                        if self.up_status == 0:
+                            self.action_list = actions
                         global_time_act += end_ - beg_
                     else:
                         self.logger.info(
                             f"No congestion detected over the tactical horizon, no UP problem will be solved at time step {self.env.nb_time_step}"
                         )
                     if len(lines_to_reconnect_in_next_action) > 0:
-                        self.actionlist[0].line_change_status = lines_to_reconnect_in_next_action
+                        self.action_list[0].line_change_status = lines_to_reconnect_in_next_action
                 i += 1
             return reward, global_time_act, done
